@@ -184,29 +184,30 @@ function getApiBaseUrl() {
 }
 
 function wrapMasterKey(masterKeyBase64) {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      protection: "safe-storage",
-      value: safeStorage.encryptString(masterKeyBase64).toString("base64"),
-    };
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error(
+      "No se puede guardar la sesión porque safeStorage no está disponible en este equipo.",
+    );
   }
 
   return {
-    protection: "plaintext-fallback",
-    value: masterKeyBase64,
+    protection: "safe-storage",
+    value: safeStorage.encryptString(masterKeyBase64).toString("base64"),
   };
 }
 
 function unwrapMasterKey(wrappedKey) {
-  if (wrappedKey.protection === "safe-storage") {
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error("Electron safeStorage is not available on this machine.");
-    }
-
-    return safeStorage.decryptString(Buffer.from(wrappedKey.value, "base64"));
+  if (wrappedKey.protection !== "safe-storage") {
+    throw new Error(
+      "La sesión guardada usa un modo de protección no soportado. Cierra sesión y vuelve a iniciarla.",
+    );
   }
 
-  return wrappedKey.value;
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Electron safeStorage is not available on this machine.");
+  }
+
+  return safeStorage.decryptString(Buffer.from(wrappedKey.value, "base64"));
 }
 
 function getStoredSessionRecord() {
@@ -237,7 +238,7 @@ function getStoredGitHubToken() {
 }
 
 function hasStoredSession() {
-  return Boolean(getStoredSessionRecord());
+  return Boolean(getStoredGitHubToken().trim());
 }
 
 function resolveDesktopBackgroundColor(theme) {
@@ -598,10 +599,11 @@ function registerDesktopIpcHandlers() {
 
   ipcMain.handle("desktop:get-session-status", async () => {
     const sessionRecord = getStoredSessionRecord();
+    const hasToken = Boolean(getStoredGitHubToken().trim());
 
     return {
-      configured: Boolean(sessionRecord),
-      username: sessionRecord?.username ?? null,
+      configured: hasToken,
+      username: hasToken ? (sessionRecord?.username ?? null) : null,
     };
   });
 
@@ -620,7 +622,13 @@ function registerDesktopIpcHandlers() {
         throw new Error("Debes introducir un token en la primera sesión.");
       }
 
-      githubToken = decryptSessionToken(existingRecord, unwrapMasterKey);
+      try {
+        githubToken = decryptSessionToken(existingRecord, unwrapMasterKey);
+      } catch {
+        throw new Error(
+          "No se pudo reutilizar el token guardado. Introduce un token de GitHub para volver a guardar la sesión.",
+        );
+      }
     }
 
     const nextRecord = createEncryptedSessionRecord({
