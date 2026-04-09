@@ -1,0 +1,17 @@
+{
+  "name": "@dashboard/api",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "venv": "python -m uv venv .venv",
+    "sync": "python -m uv sync --project .",
+    "dev": "python -m uv run --project . dashboard-api-dev",
+    "build": "python -m uv run --project . python -m compileall src tests",
+    "build:exe": "node scripts/build-exe.cjs",
+    "lint": "python -m uv run --project . ruff check . --output-format=full",
+    "format": "python -m uv run --project . ruff format .",
+    "format:check": "python -m uv run --project . ruff format . --check",
+    "test": "python -m uv run --project . pytest"
+  }
+}
+

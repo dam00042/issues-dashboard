@@ -1,0 +1,22 @@
+{
+  "name": "@dashboard/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "node scripts/run-electron.cjs . --wait-url=http://127.0.0.1:3000",
+    "build": "node scripts/build-desktop.cjs",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --assist-enabled=false",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.10",
+    "electron": "41.1.0",
+    "rcedit": "^5.0.2"
+  }
+}

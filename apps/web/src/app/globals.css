@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@import "@heroui/react/styles";
+
+:root {
+  --app-accent: 9 105 218;
+  --app-accent-strong: 9 105 218;
+  --app-background: 246 248 250;
+  --app-border: 208 215 222;
+  --app-danger: 190 24 93;
+  --app-foreground: 31 35 40;
+  --app-muted: 87 96 106;
+  --app-open: 26 127 55;
+  --app-closed: 130 80 223;
+  --app-surface: 255 255 255;
+  --app-surface-strong: 248 250 252;
+}
+
+@theme inline {
+  --color-background: rgb(var(--app-background));
+  --color-foreground: rgb(var(--app-foreground));
+  --font-mono: var(--font-ibm-plex-mono);
+  --font-sans: var(--font-space-grotesk);
+}
+
+.dark {
+  --app-accent: 47 129 247;
+  --app-accent-strong: 230 237 243;
+  --app-background: 13 17 23;
+  --app-border: 48 54 61;
+  --app-danger: 251 113 133;
+  --app-foreground: 230 237 243;
+  --app-muted: 139 148 158;
+  --app-open: 63 185 80;
+  --app-closed: 163 113 247;
+  --app-surface: 22 27 34;
+  --app-surface-strong: 30 36 45;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: rgb(var(--app-background));
+  color: rgb(var(--app-foreground));
+  overflow: hidden;
+}
+
+* {
+  scrollbar-color: rgba(var(--app-muted), 0.26) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: rgba(var(--app-muted), 0.18);
+  background-clip: padding-box;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(var(--app-accent), 0.22);
+  background-clip: padding-box;
+}
+
+.app-scrollbar {
+  scrollbar-color: rgba(var(--app-muted), 0.26) transparent;
+  scrollbar-width: thin;
+}
+
+a,
+button,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+textarea {
+  resize: vertical;
+}

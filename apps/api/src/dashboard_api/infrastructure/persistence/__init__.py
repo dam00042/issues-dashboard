@@ -1,0 +1,1 @@
+"""Expose SQLite persistence adapters."""

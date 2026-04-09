@@ -1,0 +1,33 @@
+{
+  "name": "issues-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/run-turbo-dev.cjs web",
+    "dev:stream": "node scripts/run-turbo-dev.cjs web --ui=stream",
+    "dev:desktop": "node scripts/run-turbo-dev.cjs desktop",
+    "dev:desktop:stream": "node scripts/run-turbo-dev.cjs desktop --ui=stream",
+    "build": "npm run build --workspace @dashboard/api && npm run build --workspace @dashboard/web && npm run build --workspace @dashboard/desktop",
+    "build:desktop": "npm run build",
+    "lint": "npm run lint --workspace @dashboard/api && npm run lint --workspace @dashboard/web && npm run lint --workspace @dashboard/desktop",
+    "format": "npm run format --workspace @dashboard/api && npm run format --workspace @dashboard/web && npm run format --workspace @dashboard/desktop",
+    "format:check": "npm run format:check --workspace @dashboard/api && npm run format:check --workspace @dashboard/web && npm run format:check --workspace @dashboard/desktop",
+    "test": "npm run test --workspace @dashboard/api && npm run test --workspace @dashboard/web && npm run test --workspace @dashboard/desktop",
+    "verify": "npm run format:check && npm run lint && npm run test && npm run build",
+    "backend:venv": "python -m uv venv apps/api/.venv",
+    "backend:sync": "python -m uv sync --project apps/api",
+    "backend:dev": "python -m uv run --project apps/api dashboard-api-dev",
+    "backend:test": "python -m uv run --project apps/api pytest",
+    "backend:lint": "python -m uv run --project apps/api ruff check . --output-format=full",
+    "backend:format": "python -m uv run --project apps/api ruff format .",
+    "backend:format:check": "python -m uv run --project apps/api ruff format . --check"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.3"
+  }
+}
+
