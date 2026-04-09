@@ -11,14 +11,16 @@ Spanish documentation is available in [README.es.md](README.es.md).
 1. [Overview](#overview)
 2. [Core Features](#core-features)
 3. [Architecture](#architecture)
-4. [Runtime Modes](#runtime-modes)
-5. [API Overview](#api-overview)
-6. [Configuration](#configuration)
-7. [Getting Started](#getting-started)
-8. [Quality Commands](#quality-commands)
-9. [Desktop Packaging (Windows)](#desktop-packaging-windows)
-10. [Security Model](#security-model)
-11. [Troubleshooting](#troubleshooting)
+4. [Repository Tree (Detailed)](#repository-tree-detailed)
+5. [Runtime Modes](#runtime-modes)
+6. [API Overview](#api-overview)
+7. [Configuration](#configuration)
+8. [GitHub Token Setup (gho_)](#github-token-setup-gho_)
+9. [Getting Started](#getting-started)
+10. [Quality Commands](#quality-commands)
+11. [Desktop Packaging (Windows)](#desktop-packaging-windows)
+12. [Security Model](#security-model)
+13. [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -47,7 +49,7 @@ The app is intentionally local-first: issue organization, notes, and completion 
 
 ## Architecture
 
-## Monorepo Layout
+### Monorepo Layout
 
 ```text
 apps/
@@ -55,6 +57,68 @@ apps/
   web/       Next.js App Router UI
   desktop/   Electron shell and packaging scripts
 scripts/     root orchestration helpers
+```
+
+## Repository Tree (Detailed)
+
+The tree below focuses on source code and build scripts, and omits generated caches and virtual environments.
+
+```text
+.
+├─ apps/
+│  ├─ api/
+│  │  ├─ scripts/
+│  │  │  └─ build-exe.cjs
+│  │  ├─ src/
+│  │  │  └─ dashboard_api/
+│  │  │     ├─ app/main.py
+│  │  │     ├─ application/
+│  │  │     │  ├─ issues/service.py
+│  │  │     │  └─ session/service.py
+│  │  │     ├─ domain/issues/
+│  │  │     ├─ infrastructure/
+│  │  │     │  ├─ github/client.py
+│  │  │     │  ├─ persistence/sqlite_repository.py
+│  │  │     │  └─ session/local_session_store.py
+│  │  │     └─ presentation/http/
+│  │  │        ├─ routes/health.py
+│  │  │        ├─ routes/issues.py
+│  │  │        ├─ routes/session.py
+│  │  │        └─ schemas.py
+│  │  ├─ tests/
+│  │  │  ├─ integration/
+│  │  │  └─ unit/
+│  │  ├─ pyproject.toml
+│  │  └─ package.json
+│  ├─ web/
+│  │  ├─ src/
+│  │  │  ├─ app/
+│  │  │  ├─ features/issues-dashboard/
+│  │  │  │  ├─ api.ts
+│  │  │  │  ├─ dashboard-app.tsx
+│  │  │  │  ├─ dashboard-board.tsx
+│  │  │  │  ├─ dashboard-chrome.tsx
+│  │  │  │  └─ notes-block-editor.tsx
+│  │  │  └─ types/desktop.d.ts
+│  │  ├─ scripts/run-web-dev.cjs
+│  │  └─ package.json
+│  └─ desktop/
+│     ├─ scripts/
+│     │  ├─ build-desktop.cjs
+│     │  └─ run-electron.cjs
+│     ├─ assets/
+│     ├─ main.cjs
+│     ├─ preload.cjs
+│     ├─ session-store.cjs
+│     ├─ session-store.test.cjs
+│     └─ package.json
+├─ docs/images/hero-dashboard.png
+├─ scripts/run-turbo-dev.cjs
+├─ biome.json
+├─ package.json
+├─ README.md
+├─ README.es.md
+└─ turbo.json
 ```
 
 ## Backend (`apps/api`)
@@ -169,7 +233,7 @@ Common environment variables:
 - `NEXT_PUBLIC_API_BASE_URL`
   - Frontend API base URL (usually injected by dev scripts).
 - `GITHUB_TOKEN`
-  - Optional fallback token when no local session is stored.
+  - Optional fallback token when no local session is stored. It can be a PAT or a `gho_` OAuth token from GitHub CLI.
 - `GITHUB_USERNAME`
   - Optional fallback username associated with `GITHUB_TOKEN`.
 - `ISSUES_DATABASE_PATH`
@@ -180,6 +244,39 @@ Common environment variables:
   - Local encryption key path for backend session store.
 
 `apps/api/.env.local` and `apps/web/.env.local` are ignored by git for local-only configuration.
+
+## GitHub Token Setup (gho_)
+
+If your token starts with `gho_`, that is expected: it is an OAuth token issued by GitHub CLI, not a classic `ghp_` token.
+
+Recommended flow:
+
+1. Install GitHub CLI (`gh`) if it is not available.
+2. Authenticate with GitHub and grant API scopes:
+
+```bash
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+```
+
+3. Verify the active session:
+
+```bash
+gh auth status
+```
+
+4. Print your current CLI token:
+
+```bash
+gh auth token
+```
+
+The output commonly starts with `gho_`. Paste that token into the app's GitHub token field, and use your GitHub username in the username field.
+
+Security notes:
+
+- Treat the token exactly like a password.
+- Do not commit it to files or share it in screenshots.
+- You can revoke it at any time from GitHub account settings, or log out via `gh auth logout`.
 
 ## Getting Started
 

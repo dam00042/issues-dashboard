@@ -11,14 +11,16 @@ English documentation is available in [README.md](README.md).
 1. [Resumen](#resumen)
 2. [Características principales](#características-principales)
 3. [Arquitectura](#arquitectura)
-4. [Modos de ejecución](#modos-de-ejecución)
-5. [Resumen de la API](#resumen-de-la-api)
-6. [Configuración](#configuración)
-7. [Puesta en marcha](#puesta-en-marcha)
-8. [Comandos de calidad](#comandos-de-calidad)
-9. [Empaquetado de escritorio (Windows)](#empaquetado-de-escritorio-windows)
-10. [Modelo de seguridad](#modelo-de-seguridad)
-11. [Resolución de problemas](#resolución-de-problemas)
+4. [Árbol del repositorio (detallado)](#árbol-del-repositorio-detallado)
+5. [Modos de ejecución](#modos-de-ejecución)
+6. [Resumen de la API](#resumen-de-la-api)
+7. [Configuración](#configuración)
+8. [Obtención del token de GitHub (gho_)](#obtención-del-token-de-github-gho_)
+9. [Puesta en marcha](#puesta-en-marcha)
+10. [Comandos de calidad](#comandos-de-calidad)
+11. [Empaquetado de escritorio (Windows)](#empaquetado-de-escritorio-windows)
+12. [Modelo de seguridad](#modelo-de-seguridad)
+13. [Resolución de problemas](#resolución-de-problemas)
 
 ## Resumen
 
@@ -47,7 +49,7 @@ La aplicación es local-first por diseño: la prioridad, notas, completado y met
 
 ## Arquitectura
 
-## Estructura del monorepo
+### Estructura del monorepo
 
 ```text
 apps/
@@ -55,6 +57,68 @@ apps/
   web/       UI con Next.js App Router
   desktop/   Electron y scripts de empaquetado
 scripts/     utilidades de orquestación en raíz
+```
+
+## Árbol del repositorio (detallado)
+
+El árbol siguiente se centra en código fuente y scripts de build, y omite cachés y entornos virtuales generados.
+
+```text
+.
+├─ apps/
+│  ├─ api/
+│  │  ├─ scripts/
+│  │  │  └─ build-exe.cjs
+│  │  ├─ src/
+│  │  │  └─ dashboard_api/
+│  │  │     ├─ app/main.py
+│  │  │     ├─ application/
+│  │  │     │  ├─ issues/service.py
+│  │  │     │  └─ session/service.py
+│  │  │     ├─ domain/issues/
+│  │  │     ├─ infrastructure/
+│  │  │     │  ├─ github/client.py
+│  │  │     │  ├─ persistence/sqlite_repository.py
+│  │  │     │  └─ session/local_session_store.py
+│  │  │     └─ presentation/http/
+│  │  │        ├─ routes/health.py
+│  │  │        ├─ routes/issues.py
+│  │  │        ├─ routes/session.py
+│  │  │        └─ schemas.py
+│  │  ├─ tests/
+│  │  │  ├─ integration/
+│  │  │  └─ unit/
+│  │  ├─ pyproject.toml
+│  │  └─ package.json
+│  ├─ web/
+│  │  ├─ src/
+│  │  │  ├─ app/
+│  │  │  ├─ features/issues-dashboard/
+│  │  │  │  ├─ api.ts
+│  │  │  │  ├─ dashboard-app.tsx
+│  │  │  │  ├─ dashboard-board.tsx
+│  │  │  │  ├─ dashboard-chrome.tsx
+│  │  │  │  └─ notes-block-editor.tsx
+│  │  │  └─ types/desktop.d.ts
+│  │  ├─ scripts/run-web-dev.cjs
+│  │  └─ package.json
+│  └─ desktop/
+│     ├─ scripts/
+│     │  ├─ build-desktop.cjs
+│     │  └─ run-electron.cjs
+│     ├─ assets/
+│     ├─ main.cjs
+│     ├─ preload.cjs
+│     ├─ session-store.cjs
+│     ├─ session-store.test.cjs
+│     └─ package.json
+├─ docs/images/hero-dashboard.png
+├─ scripts/run-turbo-dev.cjs
+├─ biome.json
+├─ package.json
+├─ README.md
+├─ README.es.md
+└─ turbo.json
 ```
 
 ## Backend (`apps/api`)
@@ -169,7 +233,7 @@ Variables de entorno más relevantes:
 - `NEXT_PUBLIC_API_BASE_URL`
   - URL base de API para el frontend (normalmente inyectada por scripts).
 - `GITHUB_TOKEN`
-  - Token opcional de respaldo cuando no hay sesión local guardada.
+  - Token opcional de respaldo cuando no hay sesión local guardada. Puede ser un PAT o un token OAuth `gho_` de GitHub CLI.
 - `GITHUB_USERNAME`
   - Usuario opcional asociado al `GITHUB_TOKEN`.
 - `ISSUES_DATABASE_PATH`
@@ -180,6 +244,39 @@ Variables de entorno más relevantes:
   - Ruta de la clave local de cifrado para sesión de backend.
 
 `apps/api/.env.local` y `apps/web/.env.local` están ignorados por git para configuración local.
+
+## Obtención del token de GitHub (gho_)
+
+Si tu token empieza por `gho_`, es totalmente normal: es un token OAuth emitido por GitHub CLI, no un token clásico `ghp_`.
+
+Flujo recomendado:
+
+1. Instala GitHub CLI (`gh`) si aún no lo tienes.
+2. Inicia sesión y concede scopes para API:
+
+```bash
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+```
+
+3. Verifica la sesión activa:
+
+```bash
+gh auth status
+```
+
+4. Muestra el token actual de GitHub CLI:
+
+```bash
+gh auth token
+```
+
+La salida suele comenzar por `gho_`. Ese valor es el que debes pegar en el campo de token de la app, junto con tu nombre de usuario de GitHub.
+
+Notas de seguridad:
+
+- Trátalo como una contraseña.
+- No lo subas al repositorio ni lo compartas en capturas.
+- Puedes revocarlo en la configuración de tu cuenta de GitHub o cerrar sesión con `gh auth logout`.
 
 ## Puesta en marcha
 
