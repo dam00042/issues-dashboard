@@ -76,6 +76,12 @@ function touchFileTimestamp(filePath) {
   fs.utimesSync(filePath, now, now);
 }
 
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 async function setWindowsExecutableIcon(executablePath) {
   if (process.platform !== "win32") {
     return;
@@ -97,9 +103,36 @@ async function setWindowsExecutableIcon(executablePath) {
     );
   }
 
-  await rcedit(executablePath, {
-    icon: iconPath,
-  });
+  // The executable can be briefly locked right after copy/rename on Windows.
+  // Retry for a few seconds to avoid flaky packaging failures.
+  const maxAttempts = 8;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await rcedit(executablePath, {
+        icon: iconPath,
+      });
+      return;
+    } catch (error) {
+      const errorText =
+        error instanceof Error ? `${error.message}` : `${String(error)}`;
+      const shouldRetry =
+        errorText.includes("Unable to commit changes") ||
+        errorText.includes("EBUSY") ||
+        errorText.includes("EPERM") ||
+        errorText.includes("access denied");
+
+      if (!shouldRetry || attempt === maxAttempts) {
+        throw new Error(
+          `Failed to set icon on ${path.basename(executablePath)} after ${String(attempt)} attempt(s).`,
+          {
+            cause: error,
+          },
+        );
+      }
+
+      await wait(250 * attempt);
+    }
+  }
 }
 
 function stopReleaseProcesses() {
