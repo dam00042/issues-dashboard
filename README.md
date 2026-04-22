@@ -9,13 +9,13 @@ Spanish documentation is available in [README.es.md](README.es.md).
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Core Features](#core-features)
-3. [Architecture](#architecture)
-4. [Repository Tree (Detailed)](#repository-tree-detailed)
-5. [Runtime Modes](#runtime-modes)
-6. [API Overview](#api-overview)
-7. [Configuration](#configuration)
-8. [GitHub Token Setup (gho_)](#github-token-setup-gho_)
+2. [GitHub Token Setup (gho_)](#github-token-setup-gho_)
+3. [Core Features](#core-features)
+4. [Architecture](#architecture)
+5. [Repository Tree (Detailed)](#repository-tree-detailed)
+6. [Runtime Modes](#runtime-modes)
+7. [API Overview](#api-overview)
+8. [Configuration](#configuration)
 9. [Getting Started](#getting-started)
 10. [Quality Commands](#quality-commands)
 11. [Desktop Packaging (Windows)](#desktop-packaging-windows)
@@ -33,6 +33,52 @@ The project combines:
 - An Electron desktop shell that embeds the backend and persists user data locally.
 
 The app is intentionally local-first: issue organization, notes, and completion state are persisted in a local SQLite database so your workflow remains responsive even when GitHub is temporarily unavailable.
+
+## GitHub Token Setup (gho_)
+
+If your token starts with `gho_`, that is expected: it is an OAuth token issued by GitHub CLI, not a classic `ghp_` token.
+
+Recommended flow:
+
+1. Install GitHub CLI (`gh`) if it is not available. You can use next commands to do it:
+```
+iwr -useb get.scoop.sh | iex
+ 
+scoop install gh
+ 
+gh --status
+ 
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+ 
+gh auth status
+ 
+gh auth token
+```
+2. Authenticate with GitHub and grant API scopes:
+
+```bash
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+```
+
+3. Verify the active session:
+
+```bash
+gh auth status
+```
+
+4. Print your current CLI token:
+
+```bash
+gh auth token
+```
+
+The output commonly starts with `gho_`. Paste that token into the app's GitHub token field, and use your GitHub username in the username field.
+
+Security notes:
+
+- Treat the token exactly like a password.
+- Do not commit it to files or share it in screenshots.
+- You can revoke it at any time from GitHub account settings, or log out via `gh auth logout`.
 
 ## Core Features
 
@@ -245,38 +291,6 @@ Common environment variables:
 
 `apps/api/.env.local` and `apps/web/.env.local` are ignored by git for local-only configuration.
 
-## GitHub Token Setup (gho_)
-
-If your token starts with `gho_`, that is expected: it is an OAuth token issued by GitHub CLI, not a classic `ghp_` token.
-
-Recommended flow:
-
-1. Install GitHub CLI (`gh`) if it is not available.
-2. Authenticate with GitHub and grant API scopes:
-
-```bash
-gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
-```
-
-3. Verify the active session:
-
-```bash
-gh auth status
-```
-
-4. Print your current CLI token:
-
-```bash
-gh auth token
-```
-
-The output commonly starts with `gho_`. Paste that token into the app's GitHub token field, and use your GitHub username in the username field.
-
-Security notes:
-
-- Treat the token exactly like a password.
-- Do not commit it to files or share it in screenshots.
-- You can revoke it at any time from GitHub account settings, or log out via `gh auth logout`.
 
 ## Getting Started
 
