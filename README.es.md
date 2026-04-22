@@ -8,14 +8,14 @@ English documentation is available in [README.md](README.md).
 
 ## Índice
 
-1. [Resumen](#resumen)
+1. [Resumen](#resumen)2. 
 2. [Características principales](#características-principales)
-3. [Arquitectura](#arquitectura)
-4. [Árbol del repositorio (detallado)](#árbol-del-repositorio-detallado)
-5. [Modos de ejecución](#modos-de-ejecución)
-6. [Resumen de la API](#resumen-de-la-api)
-7. [Configuración](#configuración)
-8. [Obtención del token de GitHub (gho_)](#obtención-del-token-de-github-gho_)
+3. [Obtención del token de GitHub (gho_)](#obtención-del-token-de-github-gho_)
+4. [Arquitectura](#arquitectura)
+5. [Árbol del repositorio (detallado)](#árbol-del-repositorio-detallado)
+6. [Modos de ejecución](#modos-de-ejecución)
+7. [Resumen de la API](#resumen-de-la-api)
+8. [Configuración](#configuración)
 9. [Puesta en marcha](#puesta-en-marcha)
 10. [Comandos de calidad](#comandos-de-calidad)
 11. [Empaquetado de escritorio (Windows)](#empaquetado-de-escritorio-windows)
@@ -46,6 +46,52 @@ La aplicación es local-first por diseño: la prioridad, notas, completado y met
 - Filtro de ventana de incidencias cerradas (`1`, `3`, `6`, `12` o `all` meses).
 - Gestión de sesión local de GitHub.
 - Controles de escritorio para exportar e importar la base de datos SQLite.
+
+## Obtención del token de GitHub (gho_)
+
+Si tu token empieza por `gho_`, es totalmente normal: es un token OAuth emitido por GitHub CLI, no un token clásico `ghp_`.
+
+Flujo recomendado:
+
+1. Instala GitHub CLI (`gh`) si aún no lo tienes. Puedes utilizar los siguientes comandos para hacerlo:
+```
+iwr -useb get.scoop.sh | iex
+ 
+scoop install gh
+ 
+gh --status
+ 
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+ 
+gh auth status
+ 
+gh auth token
+```
+2. Inicia sesión y concede scopes para API:
+
+```bash
+gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
+```
+
+3. Verifica la sesión activa:
+
+```bash
+gh auth status
+```
+
+4. Muestra el token actual de GitHub CLI:
+
+```bash
+gh auth token
+```
+
+La salida suele comenzar por `gho_`. Ese valor es el que debes pegar en el campo de token de la app, junto con tu nombre de usuario de GitHub.
+
+Notas de seguridad:
+
+- Trátalo como una contraseña.
+- No lo subas al repositorio ni lo compartas en capturas.
+- Puedes revocarlo en la configuración de tu cuenta de GitHub o cerrar sesión con `gh auth logout`.
 
 ## Arquitectura
 
@@ -244,39 +290,6 @@ Variables de entorno más relevantes:
   - Ruta de la clave local de cifrado para sesión de backend.
 
 `apps/api/.env.local` y `apps/web/.env.local` están ignorados por git para configuración local.
-
-## Obtención del token de GitHub (gho_)
-
-Si tu token empieza por `gho_`, es totalmente normal: es un token OAuth emitido por GitHub CLI, no un token clásico `ghp_`.
-
-Flujo recomendado:
-
-1. Instala GitHub CLI (`gh`) si aún no lo tienes.
-2. Inicia sesión y concede scopes para API:
-
-```bash
-gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
-```
-
-3. Verifica la sesión activa:
-
-```bash
-gh auth status
-```
-
-4. Muestra el token actual de GitHub CLI:
-
-```bash
-gh auth token
-```
-
-La salida suele comenzar por `gho_`. Ese valor es el que debes pegar en el campo de token de la app, junto con tu nombre de usuario de GitHub.
-
-Notas de seguridad:
-
-- Trátalo como una contraseña.
-- No lo subas al repositorio ni lo compartas en capturas.
-- Puedes revocarlo en la configuración de tu cuenta de GitHub o cerrar sesión con `gh auth logout`.
 
 ## Puesta en marcha
 
