@@ -6,7 +6,8 @@ export type PriorityValue = 1 | 2 | 3 | 4;
 export type NoteBlockKind = "text" | "checklist" | "ordered";
 export type RemoteIssueState = "open" | "closed";
 export type ClosedWindowOption = "all" | `${number}`;
-export type DashboardSection = "board" | "completed";
+export type DashboardSection = "board" | "review";
+export type LocalIssueStatus = "active" | "in_review" | "completed";
 
 export interface NoteBlockItem {
   checked: boolean;
@@ -29,6 +30,7 @@ export interface IssueLocalState {
   localCompletedAt: string | null;
   noteBlocks: NoteBlock[];
   priority: PriorityValue | null;
+  status?: LocalIssueStatus;
 }
 
 export interface RepositorySummary {

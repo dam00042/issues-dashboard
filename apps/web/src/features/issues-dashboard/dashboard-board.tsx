@@ -3,12 +3,14 @@
 import { Button, Input, Tooltip } from "@heroui/react";
 import {
   CheckCheck,
+  Copy,
   ExternalLink,
+  Eye,
   List,
-  MessageSquareText,
   NotebookText,
   PanelRightClose,
   Pin,
+  RotateCcw,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -44,6 +46,7 @@ interface DashboardBoardProps {
   selectedIssueKey: string | null;
   onCollapseSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
+  onReviewIssue: (issueKey: string) => void;
   onIssueDragEnd: () => void;
   onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueDrop: (
@@ -51,7 +54,6 @@ interface DashboardBoardProps {
     priority: PriorityValue | null,
   ) => void;
   onIssueSelect: (issueKey: string) => void;
-  onOpenDescription: () => void;
   onSearchChange: (nextValue: string) => void;
   onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
   onTogglePin: (issueKey: string) => void;
@@ -136,20 +138,35 @@ function getQuadrantHeaderStyle(definition: PriorityDefinition): CSSProperties {
 
 function ResizeHandle({
   onPointerDown,
+  onToggleCollapse,
 }: {
   onPointerDown: (clientX: number) => void;
+  onToggleCollapse?: () => void;
 }) {
   return (
-    <button
-      aria-label="Redimensionar paneles"
-      className="hidden cursor-col-resize items-stretch justify-center xl:flex"
-      onMouseDown={(event) => onPointerDown(event.clientX)}
-      type="button"
-    >
-      <div className="flex w-[10px] items-center justify-center">
+    <div className="relative hidden cursor-col-resize items-stretch justify-center xl:flex">
+      <button
+        aria-label="Redimensionar paneles"
+        className="flex w-[10px] items-center justify-center cursor-col-resize"
+        onMouseDown={(event) => onPointerDown(event.clientX)}
+        type="button"
+      >
         <div className="h-full w-px rounded-full bg-[rgb(var(--app-border))]/80 transition-colors hover:bg-[rgb(var(--app-accent))]" />
-      </div>
-    </button>
+      </button>
+      {onToggleCollapse ? (
+        <button
+          type="button"
+          aria-label="Ocultar o mostrar panel lateral"
+          className="absolute top-1/2 -translate-y-1/2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))] text-[rgb(var(--app-muted))] shadow-md transition hover:border-[rgb(var(--app-accent))] hover:text-[rgb(var(--app-foreground))]"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapse();
+          }}
+        >
+          <PanelRightClose size={12} />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -160,6 +177,9 @@ const IssueCard = memo(function IssueCard({
   selectedIssueKey,
   onIssueDragStart,
   onIssueSelect,
+  onCompleteIssue,
+  onReviewIssue,
+  onRestoreIssue,
 }: {
   isDragging: boolean;
   issue: DashboardIssue;
@@ -167,11 +187,14 @@ const IssueCard = memo(function IssueCard({
   selectedIssueKey: string | null;
   onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
+  onCompleteIssue?: (issueKey: string) => void;
+  onReviewIssue?: (issueKey: string) => void;
+  onRestoreIssue?: (issueKey: string) => void;
 }) {
   return (
     <button
       type="button"
-      className={`relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
+      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
         isDragging
           ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
           : ""
@@ -189,6 +212,103 @@ const IssueCard = memo(function IssueCard({
         aria-hidden
         className={`absolute right-2.5 top-2.5 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`}
       />
+
+      <div
+        className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <Tooltip closeDelay={0} delay={80}>
+          <Tooltip.Trigger>
+            <div className="inline-flex">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
+                onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
+              >
+                <Copy size={11} />
+              </Button>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>Copiar URL</Tooltip.Content>
+        </Tooltip>
+
+        <Tooltip closeDelay={0} delay={80}>
+          <Tooltip.Trigger>
+            <div className="inline-flex">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
+                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink size={11} />
+              </Button>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
+        </Tooltip>
+
+        {onReviewIssue ? (
+          <Tooltip closeDelay={0} delay={80}>
+            <Tooltip.Trigger>
+              <div className="inline-flex">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="outline"
+                  className="h-6 w-6 rounded-[0.5rem] border-[#d97706]/40 bg-[#d97706]/10 text-[#d97706] hover:bg-[#d97706]/20"
+                  onPress={() => onReviewIssue(issue.issueKey)}
+                >
+                  <Eye size={11} />
+                </Button>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Content showArrow>Mandar a revisión</Tooltip.Content>
+          </Tooltip>
+        ) : null}
+
+        {onCompleteIssue ? (
+          <Tooltip closeDelay={0} delay={80}>
+            <Tooltip.Trigger>
+              <div className="inline-flex">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="outline"
+                  className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-open))]/40 bg-[rgb(var(--app-open))]/10 text-[rgb(var(--app-open))] hover:bg-[rgb(var(--app-open))]/20"
+                  onPress={() => onCompleteIssue(issue.issueKey)}
+                >
+                  <CheckCheck size={11} />
+                </Button>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Content showArrow>Completar localmente</Tooltip.Content>
+          </Tooltip>
+        ) : null}
+
+        {onRestoreIssue ? (
+          <Tooltip closeDelay={0} delay={80}>
+            <Tooltip.Trigger>
+              <div className="inline-flex">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="outline"
+                  className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
+                  onPress={() => onRestoreIssue(issue.issueKey)}
+                >
+                  <RotateCcw size={11} />
+                </Button>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
+          </Tooltip>
+        ) : null}
+      </div>
 
       <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
         {issue.repository.name} #{issue.number}
@@ -222,11 +342,11 @@ export function DashboardBoard({
   selectedIssueKey,
   onCollapseSidebar,
   onCompleteIssue,
+  onReviewIssue,
   onIssueDragEnd,
   onIssueDragStart,
   onIssueDrop,
   onIssueSelect,
-  onOpenDescription,
   onSearchChange,
   onSetPriority,
   onTogglePin,
@@ -413,6 +533,8 @@ export function DashboardBoard({
                   }}
                   onIssueSelect={onIssueSelect}
                   selectedIssueKey={selectedIssueKey}
+                  onCompleteIssue={onCompleteIssue}
+                  onReviewIssue={onReviewIssue}
                 />
               ))
             )}
@@ -497,6 +619,8 @@ export function DashboardBoard({
                           }}
                           onIssueSelect={onIssueSelect}
                           selectedIssueKey={selectedIssueKey}
+                          onCompleteIssue={onCompleteIssue}
+                          onReviewIssue={onReviewIssue}
                         />
                       ))
                     )}
@@ -510,6 +634,7 @@ export function DashboardBoard({
 
       {isSidebarVisible && isWideLayout ? (
         <ResizeHandle
+          onToggleCollapse={onCollapseSidebar}
           onPointerDown={(clientX) =>
             setDragState({
               mode: "right-split",
@@ -539,6 +664,12 @@ export function DashboardBoard({
 
               <div className="ml-auto flex shrink-0 items-center gap-1">
                 <IconActionButton
+                  label="Copiar URL"
+                  onPress={() => void navigator.clipboard.writeText(sidebarIssue.htmlUrl)}
+                >
+                  <Copy size={14} />
+                </IconActionButton>
+                <IconActionButton
                   label="Abrir en GitHub"
                   onPress={() =>
                     window.open(
@@ -549,12 +680,6 @@ export function DashboardBoard({
                   }
                 >
                   <ExternalLink size={14} />
-                </IconActionButton>
-                <IconActionButton
-                  label="Ver descripción"
-                  onPress={onOpenDescription}
-                >
-                  <MessageSquareText size={14} />
                 </IconActionButton>
                 <IconActionButton
                   isDisabled={sidebarIssue.localState.priority === null}
@@ -568,16 +693,18 @@ export function DashboardBoard({
                   <Pin size={14} />
                 </IconActionButton>
                 <IconActionButton
+                  label="Enviar a revisión"
+                  className="text-[#d97706] hover:border-[#d97706]/40 hover:bg-[#d97706]/10"
+                  onPress={() => onReviewIssue(sidebarIssue.issueKey)}
+                >
+                  <Eye size={14} />
+                </IconActionButton>
+                <IconActionButton
                   label="Completar localmente"
+                  className="text-[rgb(var(--app-open))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/10"
                   onPress={() => onCompleteIssue(sidebarIssue.issueKey)}
                 >
                   <CheckCheck size={14} />
-                </IconActionButton>
-                <IconActionButton
-                  label="Ocultar panel"
-                  onPress={onCollapseSidebar}
-                >
-                  <PanelRightClose size={14} />
                 </IconActionButton>
               </div>
             </div>

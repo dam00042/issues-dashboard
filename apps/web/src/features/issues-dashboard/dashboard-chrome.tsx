@@ -3,9 +3,6 @@
 import { Button, Input, Modal, Tooltip } from "@heroui/react";
 import { Copy, Loader2, Maximize2, Minus, X } from "lucide-react";
 import type { ReactNode } from "react";
-import type { Components } from "react-markdown";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
 
@@ -32,58 +29,6 @@ interface DesktopTitleBarProps {
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
 }
-
-const markdownComponents: Components = {
-  a: ({ children, href }) => (
-    <a
-      className="font-medium text-[rgb(var(--app-accent))] underline underline-offset-4"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {children}
-    </a>
-  ),
-  code: ({ children }) => (
-    <code className="rounded bg-black/6 px-1.5 py-0.5 text-[0.92em] dark:bg-white/10">
-      {children}
-    </code>
-  ),
-  h1: ({ children }) => (
-    <h1 className="text-lg font-semibold text-[rgb(var(--app-foreground))]">
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-base font-semibold text-[rgb(var(--app-foreground))]">
-      {children}
-    </h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
-      {children}
-    </h3>
-  ),
-  li: ({ children }) => (
-    <li className="leading-6 text-[rgb(var(--app-foreground))]">{children}</li>
-  ),
-  ol: ({ children }) => (
-    <ol className="mb-4 list-decimal space-y-2 pl-5 last:mb-0">{children}</ol>
-  ),
-  p: ({ children }) => (
-    <p className="mb-4 leading-6 text-[rgb(var(--app-foreground))] last:mb-0">
-      {children}
-    </p>
-  ),
-  pre: ({ children }) => (
-    <pre className="mb-4 overflow-x-auto rounded-2xl bg-[rgb(var(--app-surface-strong))] p-4 text-sm last:mb-0">
-      {children}
-    </pre>
-  ),
-  ul: ({ children }) => (
-    <ul className="mb-4 list-disc space-y-2 pl-5 last:mb-0">{children}</ul>
-  ),
-};
 
 export function DesktopTitleBar({
   className,
@@ -236,7 +181,7 @@ export function SessionScreen({
               data-gramm_editor="false"
               data-lt-active="false"
               placeholder={
-                isEditing ? "Déjalo vacío para conservar el actual" : "ghp_..."
+                isEditing ? "Déjalo vacío para conservar el actual" : "gho_..."
               }
               spellCheck={false}
               type="password"
@@ -280,6 +225,7 @@ export function SessionScreen({
 
 interface IconActionButtonProps {
   children: ReactNode;
+  className?: string;
   isDisabled?: boolean;
   label: string;
   onPress?: () => void;
@@ -287,6 +233,7 @@ interface IconActionButtonProps {
 
 export function IconActionButton({
   children,
+  className,
   isDisabled = false,
   label,
   onPress,
@@ -300,7 +247,7 @@ export function IconActionButton({
             size="sm"
             variant="outline"
             isDisabled={isDisabled}
-            className="h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] shadow-none transition hover:border-[rgb(var(--app-accent))]/35 hover:text-[rgb(var(--app-foreground))]"
+            className={`h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] shadow-none transition hover:border-[rgb(var(--app-accent))]/35 hover:text-[rgb(var(--app-foreground))] ${className ?? ""}`}
             onPress={onPress}
           >
             {children}
@@ -317,49 +264,4 @@ export function IconActionButton({
   );
 }
 
-interface DescriptionModalProps {
-  isOpen: boolean;
-  issue: DashboardIssue | null;
-  onOpenChange: (nextValue: boolean) => void;
-}
 
-export function DescriptionModal({
-  isOpen,
-  issue,
-  onOpenChange,
-}: DescriptionModalProps) {
-  return (
-    <Modal>
-      <Modal.Backdrop
-        isDismissable
-        isOpen={isOpen}
-        variant="blur"
-        onOpenChange={onOpenChange}
-      >
-        <Modal.Container scroll="inside" size="md">
-          <Modal.Dialog className="mx-auto h-[50vh] w-[50vw] max-w-none border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]">
-            <Modal.CloseTrigger />
-            <Modal.Header>
-              <Modal.Heading>Descripción original</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <div className="text-sm">
-                <ReactMarkdown
-                  components={markdownComponents}
-                  remarkPlugins={[remarkGfm]}
-                >
-                  {issue?.body || "Esta issue no tiene descripción en GitHub."}
-                </ReactMarkdown>
-              </div>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button slot="close" variant="outline">
-                Cerrar
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
-  );
-}

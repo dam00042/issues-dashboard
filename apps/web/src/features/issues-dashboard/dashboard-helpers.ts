@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   AlertTriangle,
   ArrowDownCircle,
@@ -303,4 +305,12 @@ export function buildSyncPayload(
       repoName: issue.repository.name,
       state: issue.localState,
     }));
+}
+
+export function formatAbsoluteTimestamp(timestamp: string | null): string {
+  if (!timestamp) {
+    return "sin actividad reciente";
+  }
+
+  return format(new Date(timestamp), "dd/MM/yyyy HH:mm", { locale: es });
 }

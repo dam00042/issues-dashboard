@@ -50,8 +50,8 @@ import {
   waitForLocalSessionStatus,
 } from "@/features/issues-dashboard/api";
 import { DashboardBoard } from "@/features/issues-dashboard/dashboard-board";
+import { DashboardCompletedBoard } from "@/features/issues-dashboard/dashboard-completed-board";
 import {
-  DescriptionModal,
   DesktopTitleBar,
   type SessionFormState,
   SessionScreen,
@@ -69,6 +69,7 @@ import type {
   DashboardIssue,
   DashboardSection,
   IssueLocalState,
+  LocalIssueStatus,
   LocalSessionStatus,
   PriorityValue,
   SnapshotResponse,
@@ -175,11 +176,16 @@ function getThemeIcon(theme: ThemeMode, resolvedTheme?: string) {
 }
 
 function normalizeIssue(issue: DashboardIssue): DashboardIssue {
+  const status: LocalIssueStatus =
+    issue.localState?.status ??
+    (issue.localState?.localCompletedAt ? "completed" : "active");
+
   return {
     ...issue,
     localState: {
       ...issue.localState,
-      noteBlocks: normalizeNoteBlocks(issue.localState.noteBlocks),
+      status,
+      noteBlocks: normalizeNoteBlocks(issue.localState?.noteBlocks),
     },
   };
 }
@@ -250,7 +256,6 @@ export function DashboardApp() {
   );
   const [syncError, setSyncError] = useState("");
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
-  const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionConfigured, setSessionConfigured] = useState(false);
@@ -265,6 +270,18 @@ export function DashboardApp() {
     username: "",
   });
   const snapshotEnabled = sessionConfigured && backendReady;
+
+  useEffect(() => {
+    if (!databaseTransferNotice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDatabaseTransferNotice("");
+    }, 4000);
+
+    return () => window.clearTimeout(timer);
+  }, [databaseTransferNotice]);
 
   const ensureDesktopBackendReady = useCallback(async (): Promise<boolean> => {
     if (!window.githubIssuesDesktop?.isElectron) {
@@ -633,7 +650,13 @@ export function DashboardApp() {
   );
 
   const boardIssues = useMemo(
-    () => issues.filter((issue) => issue.localState.localCompletedAt === null),
+    () =>
+      issues.filter(
+        (issue) =>
+          issue.localState.status === "active" ||
+          (issue.localState.status === undefined &&
+            issue.localState.localCompletedAt === null),
+      ),
     [issues],
   );
 
@@ -646,9 +669,20 @@ export function DashboardApp() {
     [boardIssues, deferredSearch],
   );
 
+  const reviewIssues = useMemo(
+    () =>
+      issues.filter((issue) => issue.localState.status === "in_review"),
+    [issues],
+  );
+
   const completedIssues = useMemo(() => {
     const filteredIssues = filterIssuesBySearch(
-      issues.filter((issue) => issue.localState.localCompletedAt !== null),
+      issues.filter(
+        (issue) =>
+          issue.localState.status === "completed" ||
+          (issue.localState.status === undefined &&
+            issue.localState.localCompletedAt !== null),
+      ),
       deferredSearch,
     );
 
@@ -691,7 +725,6 @@ export function DashboardApp() {
     backendReadyError ||
     databaseTransferError ||
     snapshotConnectivityNotice ||
-    databaseTransferNotice ||
     (isSyncing ? "Actualizando dashboard..." : "");
   const topbarHasError = Boolean(
     syncError || backendReadyError || databaseTransferError,
@@ -709,9 +742,6 @@ export function DashboardApp() {
   const handleIssueSelect = useCallback((issueKey: string) => {
     setSelectedIssueKey(issueKey);
     setIsSidebarCollapsed(false);
-  }, []);
-  const handleOpenDescription = useCallback(() => {
-    setDescriptionOpen(true);
   }, []);
   const minimizeDesktopWindow = useCallback(() => {
     void window.githubIssuesDesktop?.minimizeWindow?.();
@@ -958,12 +988,30 @@ export function DashboardApp() {
         lastPriorityBeforeCompletion: localState.priority,
         localCompletedAt: new Date().toISOString(),
         priority: null,
+        status: "completed" as LocalIssueStatus,
       }),
       { flush: true, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
     setSelectedIssueKey(null);
-    setSection("board");
+  }
+
+  function reviewIssue(issueKey: string) {
+    updateIssueLocalState(
+      issueKey,
+      (localState) => ({
+        ...localState,
+        isPinned: false,
+        lastPinnedBeforeCompletion: localState.isPinned,
+        lastPriorityBeforeCompletion: localState.priority,
+        localCompletedAt: new Date().toISOString(),
+        priority: null,
+        status: "in_review" as LocalIssueStatus,
+      }),
+      { flush: true, trackDirty: false },
+    );
+    void persistSingleIssueMutation(issueKey);
+    setSelectedIssueKey(null);
   }
 
   function restoreIssue(issueKey: string) {
@@ -976,11 +1024,11 @@ export function DashboardApp() {
         lastPriorityBeforeCompletion: null,
         localCompletedAt: null,
         priority: localState.lastPriorityBeforeCompletion,
+        status: "active" as LocalIssueStatus,
       }),
       { flush: true, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
-    setSection("board");
   }
 
   function updateIssueBlocks(
@@ -1285,17 +1333,17 @@ export function DashboardApp() {
                   </Button>
                   <Button
                     size="sm"
-                    variant={section === "completed" ? "primary" : "ghost"}
+                    variant={section === "review" ? "primary" : "ghost"}
                     className={
-                      section === "completed"
+                      section === "review"
                         ? "rounded-[0.75rem] bg-[rgb(var(--app-open))]/14 px-3 text-[rgb(var(--app-open))]"
                         : "rounded-[0.75rem] px-3"
                     }
-                    onPress={() => setSection("completed")}
+                    onPress={() => setSection("review")}
                   >
                     <span className="inline-flex items-center gap-1.5">
                       <CheckCircle2 size={14} />
-                      <span>Completadas</span>
+                      <span>Revisión y cierre</span>
                     </span>
                   </Button>
                 </div>
@@ -1511,11 +1559,11 @@ export function DashboardApp() {
                   selectedIssueKey={selectedIssueKey}
                   onCollapseSidebar={handleCollapseSidebar}
                   onCompleteIssue={completeIssue}
+                  onReviewIssue={reviewIssue}
                   onIssueDragEnd={handleIssueDragEnd}
                   onIssueDragStart={handleIssueDragStart}
                   onIssueDrop={handleIssueDrop}
                   onIssueSelect={handleIssueSelect}
-                  onOpenDescription={handleOpenDescription}
                   onSearchChange={setSearch}
                   onSetPriority={setIssuePriority}
                   onTogglePin={toggleIssuePin}
@@ -1523,67 +1571,20 @@ export function DashboardApp() {
                 />
               )
             ) : (
-              <div className="flex h-full flex-col rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95">
-                <div className="border-b border-[rgb(var(--app-border))]/55 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
-                    Completadas
-                  </h2>
-                </div>
-
-                <ScrollShadow
-                  hideScrollBar
-                  className="app-scrollbar min-h-0 flex-1 px-4 py-4"
-                >
-                  <div className="space-y-3 pb-6">
-                    {completedIssues.length === 0 ? (
-                      <div className="rounded-[1.1rem] border border-dashed border-[rgb(var(--app-border))]/70 px-5 py-10 text-center text-sm text-[rgb(var(--app-muted))]">
-                        No hay issues completadas todavía.
-                      </div>
-                    ) : (
-                      completedIssues.map((issue) => (
-                        <article
-                          key={issue.issueKey}
-                          className="relative rounded-[1rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/88 px-4 py-3"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-[11px] font-medium text-[rgb(var(--app-muted))]">
-                                {issue.repository.fullName} #{issue.number}
-                              </div>
-                              <h3 className="mt-1.5 text-[15px] font-semibold leading-5 text-[rgb(var(--app-foreground))]">
-                                {issue.title}
-                              </h3>
-                              <div className="mt-2 text-xs text-[rgb(var(--app-muted))]">
-                                Completada el{" "}
-                                {formatAbsoluteTimestamp(
-                                  issue.localState.localCompletedAt,
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex shrink-0 flex-col items-end gap-2 pt-0.5">
-                              <span
-                                aria-hidden
-                                className={`h-2.5 w-2.5 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`}
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onPress={() => restoreIssue(issue.issueKey)}
-                              >
-                                <span className="inline-flex items-center gap-2">
-                                  <RotateCcw size={15} />
-                                  <span>Restaurar</span>
-                                </span>
-                              </Button>
-                            </div>
-                          </div>
-                        </article>
-                      ))
-                    )}
-                  </div>
-                </ScrollShadow>
-              </div>
+              <DashboardCompletedBoard
+                activeIssue={activeIssue}
+                reviewIssues={reviewIssues}
+                completedIssues={completedIssues}
+                isSidebarCollapsed={isSidebarCollapsed}
+                selectedIssueKey={selectedIssueKey}
+                onCollapseSidebar={handleCollapseSidebar}
+                onIssueSelect={handleIssueSelect}
+                onRestoreIssue={restoreIssue}
+                onTogglePin={toggleIssuePin}
+                onUpdateBlocks={updateIssueBlocks}
+                onIssueDragStart={handleIssueDragStart}
+                onIssueDragEnd={handleIssueDragEnd}
+              />
             )}
           </div>
         </div>
@@ -1672,11 +1673,20 @@ export function DashboardApp() {
         </Modal.Backdrop>
       </Modal>
 
-      <DescriptionModal
-        issue={activeIssue}
-        isOpen={descriptionOpen}
-        onOpenChange={setDescriptionOpen}
-      />
+      {databaseTransferNotice ? (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 rounded-[1rem] border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/96 px-4 py-3 text-xs font-medium text-[rgb(var(--app-foreground))] shadow-2xl backdrop-blur transition-all animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 size={16} className="shrink-0 text-[rgb(var(--app-open))]" />
+          <span className="max-w-md leading-relaxed">{databaseTransferNotice}</span>
+          <button
+            type="button"
+            aria-label="Cerrar notificación"
+            className="ml-1 cursor-pointer text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
+            onClick={() => setDatabaseTransferNotice("")}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }
