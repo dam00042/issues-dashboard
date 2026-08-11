@@ -163,28 +163,60 @@ const IssueCard = memo(function IssueCard({
       />
 
       <div
-        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 rounded-[0.9rem] border border-[rgb(var(--app-border))]/50 bg-[rgb(var(--app-surface-strong))]/60 p-0.5 opacity-0 shadow-sm backdrop-blur-md transition-opacity group-hover:opacity-100"
+        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <IconActionButton
-          label="Copiar URL"
-          onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
-        >
-          <Copy size={13} />
-        </IconActionButton>
-        <IconActionButton
-          label="Abrir en GitHub"
-          onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-        >
-          <ExternalLink size={13} />
-        </IconActionButton>
-        <IconActionButton
-          label="Restaurar al dashboard"
-          onPress={() => onRestoreIssue(issue.issueKey)}
-        >
-          <RotateCcw size={13} />
-        </IconActionButton>
+        <Tooltip closeDelay={0} delay={80}>
+          <Tooltip.Trigger>
+            <div className="inline-flex">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
+              >
+                <Copy size={11} />
+              </Button>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>Copiar URL</Tooltip.Content>
+        </Tooltip>
+
+        <Tooltip closeDelay={0} delay={80}>
+          <Tooltip.Trigger>
+            <div className="inline-flex">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink size={11} />
+              </Button>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
+        </Tooltip>
+
+        <Tooltip closeDelay={0} delay={80}>
+          <Tooltip.Trigger>
+            <div className="inline-flex">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                onPress={() => onRestoreIssue(issue.issueKey)}
+              >
+                <RotateCcw size={11} />
+              </Button>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
+        </Tooltip>
       </div>
 
       <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
@@ -483,6 +515,21 @@ export function DashboardCompletedBoard({
         onRestoreIssue={onRestoreIssue}
       />
 
+      {isSidebarVisible && isWideLayout ? (
+        <ResizeHandle
+          onToggleCollapse={onCollapseSidebar}
+          onPointerDown={(clientX) =>
+            setDragState({
+              mode: "right-split",
+              startX: clientX,
+              threeColumnLeft,
+              threeColumnRight,
+              twoColumnLeft,
+            })
+          }
+        />
+      ) : null}
+
       {/* ── Sidebar ── */}
       {isSidebarVisible && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
@@ -556,21 +603,6 @@ export function DashboardCompletedBoard({
         <aside className="flex min-h-[220px] items-center justify-center rounded-[1.2rem] border border-dashed border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/78 px-5 py-8 text-center text-sm text-[rgb(var(--app-muted))] xl:min-h-0">
           Selecciona una issue para abrir el panel de contexto y notas.
         </aside>
-      ) : null}
-
-      {isSidebarVisible && isWideLayout ? (
-        <ResizeHandle
-          onToggleCollapse={onCollapseSidebar}
-          onPointerDown={(clientX) =>
-            setDragState({
-              mode: "right-split",
-              startX: clientX,
-              threeColumnLeft,
-              threeColumnRight,
-              twoColumnLeft,
-            })
-          }
-        />
       ) : null}
     </div>
   );
