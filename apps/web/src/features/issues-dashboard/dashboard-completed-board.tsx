@@ -163,60 +163,28 @@ const IssueCard = memo(function IssueCard({
       />
 
       <div
-        className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 rounded-[0.9rem] border border-[rgb(var(--app-border))]/50 bg-[rgb(var(--app-surface-strong))]/60 p-0.5 opacity-0 shadow-sm backdrop-blur-md transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
-              >
-                <Copy size={11} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Copiar URL</Tooltip.Content>
-        </Tooltip>
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink size={11} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
-        </Tooltip>
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => onRestoreIssue(issue.issueKey)}
-              >
-                <RotateCcw size={11} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
-        </Tooltip>
+        <IconActionButton
+          label="Copiar URL"
+          onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
+        >
+          <Copy size={13} />
+        </IconActionButton>
+        <IconActionButton
+          label="Abrir en GitHub"
+          onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
+        >
+          <ExternalLink size={13} />
+        </IconActionButton>
+        <IconActionButton
+          label="Restaurar al dashboard"
+          onPress={() => onRestoreIssue(issue.issueKey)}
+        >
+          <RotateCcw size={13} />
+        </IconActionButton>
       </div>
 
       <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
@@ -369,8 +337,8 @@ export function DashboardCompletedBoard({
       .matches;
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(50);
-  const [threeColumnLeft, setThreeColumnLeft] = useState(30);
-  const [threeColumnRight, setThreeColumnRight] = useState(28);
+  const [threeColumnLeft, setThreeColumnLeft] = useState(40);
+  const [threeColumnRight, setThreeColumnRight] = useState(20);
 
   const sidebarIssue = activeIssue;
   const isSidebarVisible = Boolean(sidebarIssue && !isSidebarCollapsed);
@@ -477,39 +445,17 @@ export function DashboardCompletedBoard({
       className={boardClassName}
       style={isWideLayout ? { gridTemplateColumns: wideLayoutColumns } : {}}
     >
-      {/* ── En revisión y cierre columns ── */}
-      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
-        <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
-          <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
-            En revisión y cierre
-          </h2>
-        </div>
-
-        <div className="min-h-0 flex-1 p-3">
-          <div className="grid h-full min-h-0 grid-rows-2 gap-3">
-            <BoardColumn
-              column={REVIEW_COLUMN}
-              draggedIssueKey={draggedIssueKey}
-              issues={reviewIssues}
-              selectedIssueKey={selectedIssueKey}
-              onIssueDragEnd={handleDragEnd}
-              onIssueDragStart={handleDragStart}
-              onIssueSelect={onIssueSelect}
-              onRestoreIssue={onRestoreIssue}
-            />
-            <BoardColumn
-              column={COMPLETED_COLUMN}
-              draggedIssueKey={draggedIssueKey}
-              issues={completedIssues}
-              selectedIssueKey={selectedIssueKey}
-              onIssueDragEnd={handleDragEnd}
-              onIssueDragStart={handleDragStart}
-              onIssueSelect={onIssueSelect}
-              onRestoreIssue={onRestoreIssue}
-            />
-          </div>
-        </div>
-      </section>
+      {/* ── En revisión column ── */}
+      <BoardColumn
+        column={REVIEW_COLUMN}
+        draggedIssueKey={draggedIssueKey}
+        issues={reviewIssues}
+        selectedIssueKey={selectedIssueKey}
+        onIssueDragEnd={handleDragEnd}
+        onIssueDragStart={handleDragStart}
+        onIssueSelect={onIssueSelect}
+        onRestoreIssue={onRestoreIssue}
+      />
 
       {isWideLayout ? (
         <ResizeHandle
@@ -524,6 +470,18 @@ export function DashboardCompletedBoard({
           }
         />
       ) : null}
+
+      {/* ── Completadas column ── */}
+      <BoardColumn
+        column={COMPLETED_COLUMN}
+        draggedIssueKey={draggedIssueKey}
+        issues={completedIssues}
+        selectedIssueKey={selectedIssueKey}
+        onIssueDragEnd={handleDragEnd}
+        onIssueDragStart={handleDragStart}
+        onIssueSelect={onIssueSelect}
+        onRestoreIssue={onRestoreIssue}
+      />
 
       {/* ── Sidebar ── */}
       {isSidebarVisible && sidebarIssue ? (

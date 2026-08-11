@@ -214,99 +214,47 @@ const IssueCard = memo(function IssueCard({
       />
 
       <div
-        className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 rounded-[0.9rem] border border-[rgb(var(--app-border))]/50 bg-[rgb(var(--app-surface-strong))]/60 p-0.5 opacity-0 shadow-sm backdrop-blur-md transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
-              >
-                <Copy size={11} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Copiar URL</Tooltip.Content>
-        </Tooltip>
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink size={11} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
-        </Tooltip>
-
+        <IconActionButton
+          label="Copiar URL"
+          onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
+        >
+          <Copy size={13} />
+        </IconActionButton>
+        <IconActionButton
+          label="Abrir en GitHub"
+          onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
+        >
+          <ExternalLink size={13} />
+        </IconActionButton>
         {onReviewIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-6 w-6 rounded-[0.5rem] border-[#d97706]/40 bg-[#d97706]/10 text-[#d97706] hover:bg-[#d97706]/20"
-                  onPress={() => onReviewIssue(issue.issueKey)}
-                >
-                  <Eye size={11} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Mandar a revisión</Tooltip.Content>
-          </Tooltip>
+          <IconActionButton
+            label="Mandar a revisión"
+            className="text-[#d97706] hover:border-[#d97706]/40 hover:bg-[#d97706]/10"
+            onPress={() => onReviewIssue(issue.issueKey)}
+          >
+            <Eye size={13} />
+          </IconActionButton>
         ) : null}
-
         {onCompleteIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-open))]/40 bg-[rgb(var(--app-open))]/10 text-[rgb(var(--app-open))] hover:bg-[rgb(var(--app-open))]/20"
-                  onPress={() => onCompleteIssue(issue.issueKey)}
-                >
-                  <CheckCheck size={11} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Completar localmente</Tooltip.Content>
-          </Tooltip>
+          <IconActionButton
+            label="Completar localmente"
+            className="text-[rgb(var(--app-open))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/10"
+            onPress={() => onCompleteIssue(issue.issueKey)}
+          >
+            <CheckCheck size={13} />
+          </IconActionButton>
         ) : null}
-
         {onRestoreIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-6 w-6 rounded-[0.5rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/95 text-[rgb(var(--app-muted))] hover:text-[rgb(var(--app-foreground))]"
-                  onPress={() => onRestoreIssue(issue.issueKey)}
-                >
-                  <RotateCcw size={11} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
-          </Tooltip>
+          <IconActionButton
+            label="Restaurar al dashboard"
+            onPress={() => onRestoreIssue(issue.issueKey)}
+          >
+            <RotateCcw size={13} />
+          </IconActionButton>
         ) : null}
       </div>
 
