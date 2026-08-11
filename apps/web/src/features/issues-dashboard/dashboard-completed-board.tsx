@@ -91,18 +91,19 @@ function ResizeHandle({
   onPointerDown,
   onToggleCollapse,
 }: {
-  onPointerDown: (clientX: number) => void;
+  onPointerDown?: (clientX: number) => void;
   onToggleCollapse?: () => void;
 }) {
   return (
-    <div className="relative hidden cursor-col-resize items-stretch justify-center xl:flex">
+    <div className={`relative hidden items-stretch justify-center xl:flex ${onPointerDown ? "cursor-col-resize" : ""}`}>
       <button
-        aria-label="Redimensionar paneles"
-        className="flex w-[10px] items-center justify-center cursor-col-resize"
-        onMouseDown={(event) => onPointerDown(event.clientX)}
+        aria-label={onPointerDown ? "Redimensionar paneles" : "Separador"}
+        className={`flex w-[10px] items-center justify-center ${onPointerDown ? "cursor-col-resize" : "cursor-default"}`}
+        onMouseDown={(event) => onPointerDown?.(event.clientX)}
         type="button"
+        disabled={!onPointerDown}
       >
-        <div className="h-full w-px rounded-full bg-[rgb(var(--app-border))]/80 transition-colors hover:bg-[rgb(var(--app-accent))]" />
+        <div className={`h-full w-px rounded-full transition-colors ${onPointerDown ? "bg-[rgb(var(--app-border))]/80 hover:bg-[rgb(var(--app-accent))]" : "bg-[rgb(var(--app-border))]/50"}`} />
       </button>
       {onToggleCollapse ? (
         <button
@@ -454,8 +455,8 @@ export function DashboardCompletedBoard({
   }, [dragState]);
 
   const wideLayoutColumns = isSidebarVisible
-    ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(threeColumnLeft / 100)})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px ${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(threeColumnRight / 100)})`}`
-    : `${`calc((100% - ${String(SPLITTER_WIDTH_PX)}px) * ${String(twoColumnLeft / 100)})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
+    ? `minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px ${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(threeColumnRight / 100)})`}`
+    : `minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
 
   const boardClassName = isWideLayout
     ? "grid h-full min-h-0"
@@ -490,17 +491,7 @@ export function DashboardCompletedBoard({
       />
 
       {isWideLayout ? (
-        <ResizeHandle
-          onPointerDown={(clientX) =>
-            setDragState({
-              mode: isSidebarVisible ? "left-split" : "two-col",
-              startX: clientX,
-              threeColumnLeft,
-              threeColumnRight,
-              twoColumnLeft,
-            })
-          }
-        />
+        <ResizeHandle />
       ) : null}
 
       {/* ── Completadas column ── */}

@@ -34,7 +34,7 @@ export default function RootLayout({
       lang="es"
       className={`${displaySans.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">
+      <body className="min-h-full font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>
