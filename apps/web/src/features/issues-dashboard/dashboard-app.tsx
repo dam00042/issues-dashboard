@@ -911,12 +911,46 @@ export function DashboardApp() {
   }
 
   function handleIssueDragStart(
-    event: DragEvent<HTMLElement>,
+    event: React.DragEvent<HTMLElement>,
     issueKey: string,
   ) {
     cleanupDragArtifacts();
     event.dataTransfer.setData("issue-key", issueKey);
     event.dataTransfer.effectAllowed = "move";
+
+    // Create a custom native drag ghost that guarantees the full card is shown
+    // with the active/dragging styles, regardless of React render timing.
+    const target = event.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const ghost = target.cloneNode(true) as HTMLElement;
+
+    // Apply exact visual styling for the ghost
+    ghost.style.position = "absolute";
+    ghost.style.top = "-10000px";
+    ghost.style.left = "-10000px";
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.opacity = "0.9";
+    ghost.style.transform = "rotate(-2deg)";
+    ghost.style.boxShadow = "0 18px 34px -22px rgba(0,0,0,0.5)";
+    ghost.style.background = "rgb(var(--app-surface))";
+    ghost.style.border = "1px solid rgba(var(--app-accent), 0.55)";
+    ghost.style.borderRadius = "0.9rem";
+    ghost.style.pointerEvents = "none";
+    ghost.style.zIndex = "9999";
+
+    // Native browsers require the element to be in the DOM to snapshot it
+    document.body.appendChild(ghost);
+    event.dataTransfer.setDragImage(ghost, rect.width / 2, rect.height / 2);
+
+    // Save reference and schedule immediate removal after snapshot
+    dragPreviewElementRef.current = ghost;
+    setTimeout(() => {
+      ghost.remove();
+      if (dragPreviewElementRef.current === ghost) {
+        dragPreviewElementRef.current = null;
+      }
+    }, 0);
   }
 
   function handleIssueDragEnd() {
