@@ -259,6 +259,7 @@ function BoardColumn({
   onIssueDragStart,
   onIssueSelect,
   onRestoreIssue,
+  onIssueDrop,
 }: {
   column: ColumnDef;
   draggedIssueKey: string | null;
@@ -268,14 +269,30 @@ function BoardColumn({
   onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
+  onIssueDrop?: (event: DragEvent<HTMLElement>) => void;
 }) {
   const Icon = column.icon;
 
   return (
     <section
       aria-label={column.label}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface-strong))]/88"
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1rem] border bg-[rgb(var(--app-surface-strong))]/88 ${
+        draggedIssueKey
+          ? "border-[rgb(var(--app-accent))]/60"
+          : "border-[rgb(var(--app-border))]/65"
+      }`}
       style={{ borderTop: `4px solid ${column.color}` }}
+      onDragOver={(e) => {
+        if (draggedIssueKey) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }
+      }}
+      onDrop={(e) => {
+        if (draggedIssueKey && onIssueDrop) {
+          onIssueDrop(e);
+        }
+      }}
     >
       <div
         className="flex items-center justify-between gap-2 px-3 py-2.5"
@@ -328,6 +345,8 @@ interface DashboardCompletedBoardProps {
   onExpandSidebar: () => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
+  onReviewIssue: (issueKey: string) => void;
+  onCompleteIssue: (issueKey: string) => void;
   onTogglePin: (issueKey: string) => void;
   onUpdateBlocks: (
     issueKey: string,
@@ -361,6 +380,8 @@ export function DashboardCompletedBoard({
   onExpandSidebar,
   onIssueSelect,
   onRestoreIssue,
+  onReviewIssue,
+  onCompleteIssue,
   onTogglePin,
   onUpdateBlocks,
   onIssueDragStart,
@@ -500,6 +521,9 @@ export function DashboardCompletedBoard({
         onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
+        onIssueDrop={() => {
+          if (draggedIssueKey) onReviewIssue(draggedIssueKey);
+        }}
       />
 
       {isWideLayout ? (
@@ -537,7 +561,11 @@ export function DashboardCompletedBoard({
       {/* ── Sidebar ── */}
       {isSidebarExpanded && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
-          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={{ width: "max(100%, 350px)" }}
+          >
+            <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="min-w-0 truncate font-medium text-[rgb(var(--app-foreground))]">
@@ -594,6 +622,52 @@ export function DashboardCompletedBoard({
             </h2>
           </div>
 
+          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2">
+            <div className="flex items-center gap-3">
+              <p className="min-w-[5.4rem] text-left text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-[rgb(var(--app-muted))]">
+                Estado
+              </p>
+
+              <div className="grid w-full min-w-0 flex-1 grid-cols-2 gap-2">
+                <Tooltip closeDelay={0} delay={80}>
+                  <Tooltip.Trigger>
+                    <div className="inline-flex w-full">
+                      <Button
+                        isIconOnly
+                        aria-label="Mover a En revisión"
+                        size="sm"
+                        variant="outline"
+                        className={`h-[1.95rem] w-full rounded-[0.82rem] ${sidebarIssue.localState.status === "in_review" ? "border-[#d97706]/70 bg-[#d97706]/15 text-[#d97706]" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] hover:border-[#d97706]/40 hover:bg-[#d97706]/5 hover:text-[#d97706]"}`}
+                        onPress={() => onReviewIssue(sidebarIssue.issueKey)}
+                      >
+                        <Eye size={14} />
+                      </Button>
+                    </div>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content showArrow>En revisión</Tooltip.Content>
+                </Tooltip>
+                
+                <Tooltip closeDelay={0} delay={80}>
+                  <Tooltip.Trigger>
+                    <div className="inline-flex w-full">
+                      <Button
+                        isIconOnly
+                        aria-label="Mover a Completadas"
+                        size="sm"
+                        variant="outline"
+                        className={`h-[1.95rem] w-full rounded-[0.82rem] ${sidebarIssue.localState.status === "completed" ? "border-[rgb(var(--app-open))]/70 bg-[rgb(var(--app-open))]/15 text-[rgb(var(--app-open))]" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/5 hover:text-[rgb(var(--app-open))]"}`}
+                        onPress={() => onCompleteIssue(sidebarIssue.issueKey)}
+                      >
+                        <CheckCheck size={14} />
+                      </Button>
+                    </div>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content showArrow>Completadas</Tooltip.Content>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+
           <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3 py-2.5">
             <NotesBlockEditor
               blocks={sidebarIssue.localState.noteBlocks}
@@ -601,6 +675,7 @@ export function DashboardCompletedBoard({
                 onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
               }
             />
+          </div>
           </div>
         </aside>
       ) : !isWideLayout ? (

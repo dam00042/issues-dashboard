@@ -669,7 +669,11 @@ export function DashboardBoard({
 
       {isSidebarExpanded && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
-          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={{ width: "max(100%, 350px)" }}
+          >
+            <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="min-w-0 truncate font-medium text-[rgb(var(--app-foreground))]">
@@ -714,14 +718,14 @@ export function DashboardBoard({
                 </IconActionButton>
                 <IconActionButton
                   label="Enviar a revisión"
-                  className="text-[#d97706] hover:border-[#d97706]/40 hover:bg-[#d97706]/10"
+                  className="!border-[#d97706]/50 !bg-[#d97706]/10 !text-[#d97706] hover:!bg-[#d97706]/20 hover:!border-[#d97706]/70"
                   onPress={() => onReviewIssue(sidebarIssue.issueKey)}
                 >
                   <Eye size={14} />
                 </IconActionButton>
                 <IconActionButton
                   label="Completar localmente"
-                  className="text-[rgb(var(--app-open))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/10"
+                  className="!border-[rgb(var(--app-open))]/50 !bg-[rgb(var(--app-open))]/10 !text-[rgb(var(--app-open))] hover:!bg-[rgb(var(--app-open))]/20 hover:!border-[rgb(var(--app-open))]/70"
                   onPress={() => onCompleteIssue(sidebarIssue.issueKey)}
                 >
                   <CheckCheck size={14} />
@@ -818,6 +822,7 @@ export function DashboardBoard({
                 onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
               }
             />
+          </div>
           </div>
         </aside>
       ) : !isWideLayout ? (

@@ -1535,6 +1535,8 @@ export function DashboardApp() {
                 onExpandSidebar={() => setIsSidebarCollapsed(false)}
                 onIssueSelect={handleIssueSelect}
                 onRestoreIssue={restoreIssue}
+                onReviewIssue={reviewIssue}
+                onCompleteIssue={completeIssue}
                 onTogglePin={toggleIssuePin}
                 onUpdateBlocks={updateIssueBlocks}
                 onIssueDragStart={handleIssueDragStart}
