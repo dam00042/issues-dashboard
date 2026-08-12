@@ -276,11 +276,7 @@ function BoardColumn({
   return (
     <section
       aria-label={column.label}
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1rem] border bg-[rgb(var(--app-surface-strong))]/88 ${
-        draggedIssueKey
-          ? "border-[rgb(var(--app-accent))]/60"
-          : "border-[rgb(var(--app-border))]/65"
-      }`}
+      className="flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface-strong))]/88"
       style={{ borderTop: `4px solid ${column.color}` }}
       onDragOver={(e) => {
         if (draggedIssueKey) {
@@ -397,7 +393,7 @@ export function DashboardCompletedBoard({
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(50);
   const [threeColumnLeft, setThreeColumnLeft] = useState(40);
-  const [threeColumnRight, setThreeColumnRight] = useState(20);
+  const [threeColumnRight, setThreeColumnRight] = useState(30);
 
   const sidebarIssue = activeIssue;
   const isSidebarVisible = Boolean(sidebarIssue && !isSidebarCollapsed);
