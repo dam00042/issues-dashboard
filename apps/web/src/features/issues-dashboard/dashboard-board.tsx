@@ -484,7 +484,7 @@ export function DashboardBoard({
       )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
 
   const boardClassName = isWideLayout
-    ? "grid h-full min-h-0"
+    ? `grid h-full min-h-0 ${!dragState ? "transition-[grid-template-columns] duration-300 ease-in-out" : ""}`
     : "flex h-full min-h-0 flex-col gap-3";
 
   return (
