@@ -8,6 +8,7 @@ import {
   Eye,
   NotebookText,
   PanelRightClose,
+  PanelRightOpen,
   Pin,
   RotateCcw,
 } from "lucide-react";
@@ -88,9 +89,11 @@ function getColumnHeaderStyle(column: ColumnDef): CSSProperties {
 // ─── ResizeHandle ──────────────────────────────────────────────────────────────
 
 function ResizeHandle({
+  isCollapsed,
   onPointerDown,
   onToggleCollapse,
 }: {
+  isCollapsed?: boolean;
   onPointerDown?: (clientX: number) => void;
   onToggleCollapse?: () => void;
 }) {
@@ -108,14 +111,14 @@ function ResizeHandle({
       {onToggleCollapse ? (
         <button
           type="button"
-          aria-label="Ocultar o mostrar panel lateral"
-          className="absolute top-1/2 -translate-y-1/2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))] text-[rgb(var(--app-muted))] shadow-md transition hover:border-[rgb(var(--app-accent))] hover:text-[rgb(var(--app-foreground))]"
+          aria-label={isCollapsed ? "Mostrar panel lateral" : "Ocultar panel lateral"}
+          className={`absolute top-1/2 -translate-y-1/2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))] text-[rgb(var(--app-muted))] shadow-md transition hover:border-[rgb(var(--app-accent))] hover:text-[rgb(var(--app-foreground))] ${isCollapsed ? "-left-3" : ""}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleCollapse();
           }}
         >
-          <PanelRightClose size={12} />
+          {isCollapsed ? <PanelRightOpen size={12} /> : <PanelRightClose size={12} />}
         </button>
       ) : null}
     </div>
@@ -322,6 +325,7 @@ interface DashboardCompletedBoardProps {
   isSidebarCollapsed: boolean;
   selectedIssueKey: string | null;
   onCollapseSidebar: () => void;
+  onExpandSidebar: () => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
   onTogglePin: (issueKey: string) => void;
@@ -354,6 +358,7 @@ export function DashboardCompletedBoard({
   isSidebarCollapsed,
   selectedIssueKey,
   onCollapseSidebar,
+  onExpandSidebar,
   onIssueSelect,
   onRestoreIssue,
   onTogglePin,
@@ -454,8 +459,13 @@ export function DashboardCompletedBoard({
     };
   }, [dragState]);
 
-  const wideLayoutColumns = isSidebarVisible
+  const hasSidebarIssue = Boolean(sidebarIssue);
+  const isSidebarExpanded = hasSidebarIssue && !isSidebarCollapsed;
+
+  const wideLayoutColumns = isSidebarExpanded
     ? `minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px ${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(threeColumnRight / 100)})`}`
+    : hasSidebarIssue
+    ? `minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px 0px`
     : `minmax(0, 1fr) ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
 
   const boardClassName = isWideLayout
@@ -508,10 +518,11 @@ export function DashboardCompletedBoard({
         onRestoreIssue={onRestoreIssue}
       />
 
-      {isSidebarVisible && isWideLayout ? (
+      {hasSidebarIssue && isWideLayout ? (
         <ResizeHandle
-          onToggleCollapse={onCollapseSidebar}
-          onPointerDown={(clientX) =>
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar}
+          onPointerDown={isSidebarCollapsed ? undefined : (clientX) =>
             setDragState({
               mode: "right-split",
               startX: clientX,
@@ -524,7 +535,7 @@ export function DashboardCompletedBoard({
       ) : null}
 
       {/* ── Sidebar ── */}
-      {isSidebarVisible && sidebarIssue ? (
+      {isSidebarExpanded && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">

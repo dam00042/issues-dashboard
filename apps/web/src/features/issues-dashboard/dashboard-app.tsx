@@ -1331,17 +1331,6 @@ export function DashboardApp() {
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-1">
-                {activeIssue && isSidebarCollapsed ? (
-                  <Button
-                    isIconOnly
-                    aria-label="Mostrar panel de notas"
-                    size="sm"
-                    variant="outline"
-                    onPress={() => setIsSidebarCollapsed(false)}
-                  >
-                    <PanelRightOpen size={16} />
-                  </Button>
-                ) : null}
 
                 <Button
                   isIconOnly
@@ -1522,6 +1511,7 @@ export function DashboardApp() {
                   search={search}
                   selectedIssueKey={selectedIssueKey}
                   onCollapseSidebar={handleCollapseSidebar}
+                  onExpandSidebar={() => setIsSidebarCollapsed(false)}
                   onCompleteIssue={completeIssue}
                   onReviewIssue={reviewIssue}
                   onIssueDragEnd={handleIssueDragEnd}
@@ -1542,6 +1532,7 @@ export function DashboardApp() {
                 isSidebarCollapsed={isSidebarCollapsed}
                 selectedIssueKey={selectedIssueKey}
                 onCollapseSidebar={handleCollapseSidebar}
+                onExpandSidebar={() => setIsSidebarCollapsed(false)}
                 onIssueSelect={handleIssueSelect}
                 onRestoreIssue={restoreIssue}
                 onTogglePin={toggleIssuePin}

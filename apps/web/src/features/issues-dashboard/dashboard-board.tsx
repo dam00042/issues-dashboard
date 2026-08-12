@@ -9,6 +9,7 @@ import {
   List,
   NotebookText,
   PanelRightClose,
+  PanelRightOpen,
   Pin,
   RotateCcw,
 } from "lucide-react";
@@ -45,6 +46,7 @@ interface DashboardBoardProps {
   search: string;
   selectedIssueKey: string | null;
   onCollapseSidebar: () => void;
+  onExpandSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
   onReviewIssue: (issueKey: string) => void;
   onIssueDragEnd: () => void;
@@ -137,33 +139,36 @@ function getQuadrantHeaderStyle(definition: PriorityDefinition): CSSProperties {
 }
 
 function ResizeHandle({
+  isCollapsed,
   onPointerDown,
   onToggleCollapse,
 }: {
-  onPointerDown: (clientX: number) => void;
+  isCollapsed?: boolean;
+  onPointerDown?: (clientX: number) => void;
   onToggleCollapse?: () => void;
 }) {
   return (
-    <div className="relative hidden cursor-col-resize items-stretch justify-center xl:flex">
+    <div className={`relative hidden items-stretch justify-center xl:flex ${onPointerDown ? "cursor-col-resize" : ""}`}>
       <button
-        aria-label="Redimensionar paneles"
-        className="flex w-[10px] items-center justify-center cursor-col-resize"
-        onMouseDown={(event) => onPointerDown(event.clientX)}
+        aria-label={onPointerDown ? "Redimensionar paneles" : "Separador"}
+        className={`flex w-[10px] items-center justify-center ${onPointerDown ? "cursor-col-resize" : "cursor-default"}`}
+        onMouseDown={(event) => onPointerDown?.(event.clientX)}
         type="button"
+        disabled={!onPointerDown}
       >
-        <div className="h-full w-px rounded-full bg-[rgb(var(--app-border))]/80 transition-colors hover:bg-[rgb(var(--app-accent))]" />
+        <div className={`h-full w-px rounded-full transition-colors ${onPointerDown ? "bg-[rgb(var(--app-border))]/80 hover:bg-[rgb(var(--app-accent))]" : "bg-[rgb(var(--app-border))]/50"}`} />
       </button>
       {onToggleCollapse ? (
         <button
           type="button"
-          aria-label="Ocultar o mostrar panel lateral"
-          className="absolute top-1/2 -translate-y-1/2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))] text-[rgb(var(--app-muted))] shadow-md transition hover:border-[rgb(var(--app-accent))] hover:text-[rgb(var(--app-foreground))]"
+          aria-label={isCollapsed ? "Mostrar panel lateral" : "Ocultar panel lateral"}
+          className={`absolute top-1/2 -translate-y-1/2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))] text-[rgb(var(--app-muted))] shadow-md transition hover:border-[rgb(var(--app-accent))] hover:text-[rgb(var(--app-foreground))] ${isCollapsed ? "-left-3" : ""}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleCollapse();
           }}
         >
-          <PanelRightClose size={12} />
+          {isCollapsed ? <PanelRightOpen size={12} /> : <PanelRightClose size={12} />}
         </button>
       ) : null}
     </div>
@@ -341,6 +346,7 @@ export function DashboardBoard({
   search,
   selectedIssueKey,
   onCollapseSidebar,
+  onExpandSidebar,
   onCompleteIssue,
   onReviewIssue,
   onIssueDragEnd,
@@ -456,7 +462,10 @@ export function DashboardBoard({
     };
   }, [dragState]);
 
-  const wideLayoutColumns = isSidebarVisible
+  const hasSidebarIssue = Boolean(sidebarIssue);
+  const isSidebarExpanded = hasSidebarIssue && !isSidebarCollapsed;
+
+  const wideLayoutColumns = isSidebarExpanded
     ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
         threeColumnLeft / 100,
       )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(
@@ -464,6 +473,12 @@ export function DashboardBoard({
       )}px ${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
         threeColumnRight / 100,
       )})`}`
+    : hasSidebarIssue
+    ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
+        twoColumnLeft / 100,
+      )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(
+        SPLITTER_WIDTH_PX,
+      )}px 0px`
     : `${`calc((100% - ${String(SPLITTER_WIDTH_PX)}px) * ${String(
         twoColumnLeft / 100,
       )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
@@ -636,10 +651,11 @@ export function DashboardBoard({
         </div>
       </section>
 
-      {isSidebarVisible && isWideLayout ? (
+      {hasSidebarIssue && isWideLayout ? (
         <ResizeHandle
-          onToggleCollapse={onCollapseSidebar}
-          onPointerDown={(clientX) =>
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar}
+          onPointerDown={isSidebarCollapsed ? undefined : (clientX) =>
             setDragState({
               mode: "right-split",
               startX: clientX,
@@ -651,7 +667,7 @@ export function DashboardBoard({
         />
       ) : null}
 
-      {isSidebarVisible && sidebarIssue ? (
+      {isSidebarExpanded && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
