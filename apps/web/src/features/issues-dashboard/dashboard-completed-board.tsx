@@ -646,14 +646,14 @@ export function DashboardCompletedBoard({
                         aria-label="Mover a En revisión"
                         size="sm"
                         variant="outline"
-                        className={`h-[1.95rem] w-full rounded-[0.82rem] ${sidebarIssue.localState.status === "in_review" ? "border-[#d97706]/70 bg-[#d97706]/15 text-[#d97706]" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] hover:border-[#d97706]/40 hover:bg-[#d97706]/5 hover:text-[#d97706]"}`}
+                        className={`h-[1.95rem] w-full rounded-[0.82rem] transition-colors ${sidebarIssue.localState.status === "in_review" ? "border-[#d97706]/35 bg-[#d97706]/14 text-[#d97706] hover:border-[#d97706]/55 hover:bg-[#d97706]/20" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[#d97706]/40 hover:bg-[#d97706]/10 hover:text-[#d97706]"}`}
                         onPress={() => onReviewIssue(sidebarIssue.issueKey)}
                       >
                         <Eye size={14} />
                       </Button>
                     </div>
                   </Tooltip.Trigger>
-                  <Tooltip.Content showArrow>En revisión</Tooltip.Content>
+                  <Tooltip.Content showArrow className="border border-[#d97706]/25 bg-[rgb(var(--app-surface))] text-[#d97706] shadow-lg shadow-black/20">En revisión</Tooltip.Content>
                 </Tooltip>
                 
                 <Tooltip closeDelay={0} delay={80}>
@@ -664,14 +664,14 @@ export function DashboardCompletedBoard({
                         aria-label="Mover a Completadas"
                         size="sm"
                         variant="outline"
-                        className={`h-[1.95rem] w-full rounded-[0.82rem] ${sidebarIssue.localState.status === "completed" ? "border-[rgb(var(--app-open))]/70 bg-[rgb(var(--app-open))]/15 text-[rgb(var(--app-open))]" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/5 hover:text-[rgb(var(--app-open))]"}`}
+                        className={`h-[1.95rem] w-full rounded-[0.82rem] transition-colors ${sidebarIssue.localState.status === "completed" ? "border-[rgb(var(--app-open))]/35 bg-[rgb(var(--app-open))]/14 text-[rgb(var(--app-open))] hover:border-[rgb(var(--app-open))]/55 hover:bg-[rgb(var(--app-open))]/20" : "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[rgb(var(--app-open))]/40 hover:bg-[rgb(var(--app-open))]/10 hover:text-[rgb(var(--app-open))]"}`}
                         onPress={() => onCompleteIssue(sidebarIssue.issueKey)}
                       >
                         <CheckCheck size={14} />
                       </Button>
                     </div>
                   </Tooltip.Trigger>
-                  <Tooltip.Content showArrow>Completadas</Tooltip.Content>
+                  <Tooltip.Content showArrow className="border border-[rgb(var(--app-open))]/25 bg-[rgb(var(--app-surface))] text-[rgb(var(--app-open))] shadow-lg shadow-black/20">Completadas</Tooltip.Content>
                 </Tooltip>
               </div>
             </div>
