@@ -957,7 +957,9 @@ export function DashboardApp() {
       { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
-    setSelectedIssueKey(null);
+    if (section === "board") {
+      setSelectedIssueKey(null);
+    }
   }
 
   function reviewIssue(issueKey: string) {
@@ -975,7 +977,9 @@ export function DashboardApp() {
       { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
-    setSelectedIssueKey(null);
+    if (section === "board") {
+      setSelectedIssueKey(null);
+    }
   }
 
   function restoreIssue(issueKey: string) {

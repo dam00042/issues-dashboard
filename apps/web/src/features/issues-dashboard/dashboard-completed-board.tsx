@@ -540,6 +540,9 @@ export function DashboardCompletedBoard({
         onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
+        onIssueDrop={() => {
+          if (draggedIssueKey) onCompleteIssue(draggedIssueKey);
+        }}
       />
 
       {hasSidebarIssue && isWideLayout ? (
