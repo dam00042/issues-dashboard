@@ -333,7 +333,16 @@ export function DashboardApp() {
     [],
   );
 
-  useEffect(() => cleanupDragArtifacts, [cleanupDragArtifacts]);
+  useEffect(() => {
+    // Safety net: clean up drag artifacts whenever a drag ends anywhere in the document.
+    // This covers cases where the component-level onDragEnd doesn't fire — most notably
+    // when Next.js HMR replaces the component while a drag is still in progress.
+    document.addEventListener("dragend", cleanupDragArtifacts);
+    return () => {
+      document.removeEventListener("dragend", cleanupDragArtifacts);
+      cleanupDragArtifacts();
+    };
+  }, [cleanupDragArtifacts]);
   const loadSnapshot = useCallback(async () => {
     if (!snapshotEnabled) {
       return null;
