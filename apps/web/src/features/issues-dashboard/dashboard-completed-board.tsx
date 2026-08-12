@@ -2,6 +2,7 @@
 
 import { Button, Tooltip } from "@heroui/react";
 import {
+  Check,
   CheckCheck,
   Copy,
   ExternalLink,
@@ -21,7 +22,7 @@ import {
   useState,
 } from "react";
 
-import { IconActionButton } from "@/features/issues-dashboard/dashboard-chrome";
+import { CopyUrlButton, IconActionButton } from "@/features/issues-dashboard/dashboard-chrome";
 import {
   formatAbsoluteTimestamp,
   hasMeaningfulNotes,
@@ -144,6 +145,15 @@ const IssueCard = memo(function IssueCard({
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
 }) {
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    if (isCopied) {
+      const timeout = setTimeout(() => setIsCopied(false), 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isCopied]);
+
   return (
     <button
       type="button"
@@ -179,13 +189,16 @@ const IssueCard = memo(function IssueCard({
                 size="sm"
                 variant="outline"
                 className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => void navigator.clipboard.writeText(issue.htmlUrl)}
+                onPress={() => {
+                  void navigator.clipboard.writeText(issue.htmlUrl);
+                  setIsCopied(true);
+                }}
               >
-                <Copy size={11} />
+                {isCopied ? <Check size={11} className="text-[rgb(var(--app-open))]" /> : <Copy size={11} />}
               </Button>
             </div>
           </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Copiar URL</Tooltip.Content>
+          <Tooltip.Content showArrow>{isCopied ? "¡Copiado!" : "Copiar URL"}</Tooltip.Content>
         </Tooltip>
 
         <Tooltip closeDelay={0} delay={80}>
@@ -574,12 +587,7 @@ export function DashboardCompletedBoard({
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1">
-                <IconActionButton
-                  label="Copiar URL"
-                  onPress={() => void navigator.clipboard.writeText(sidebarIssue.htmlUrl)}
-                >
-                  <Copy size={14} />
-                </IconActionButton>
+                <CopyUrlButton url={sidebarIssue.htmlUrl} />
                 <IconActionButton
                   label="Abrir en GitHub"
                   onPress={() =>

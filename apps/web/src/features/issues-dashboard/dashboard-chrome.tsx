@@ -1,8 +1,8 @@
 "use client";
 
 import { Button, Input, Modal, Tooltip } from "@heroui/react";
-import { Copy, Loader2, Maximize2, Minus, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Copy, Loader2, Maximize2, Minus, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
 
@@ -264,4 +264,25 @@ export function IconActionButton({
   );
 }
 
+export function CopyUrlButton({ url }: { url: string }) {
+  const [isCopied, setIsCopied] = useState(false);
 
+  useEffect(() => {
+    if (isCopied) {
+      const timeout = setTimeout(() => setIsCopied(false), 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isCopied]);
+
+  return (
+    <IconActionButton
+      label={isCopied ? "¡Copiado!" : "Copiar URL"}
+      onPress={() => {
+        void navigator.clipboard.writeText(url);
+        setIsCopied(true);
+      }}
+    >
+      {isCopied ? <Check size={14} className="text-[rgb(var(--app-open))]" /> : <Copy size={14} />}
+    </IconActionButton>
+  );
+}
