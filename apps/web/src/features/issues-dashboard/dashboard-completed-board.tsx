@@ -463,7 +463,9 @@ export function DashboardCompletedBoard({
     : "flex h-full min-h-0 flex-col gap-3";
 
   const handleDragStart = (event: DragEvent<HTMLElement>, issueKey: string) => {
-    setDraggedIssueKey(issueKey);
+    requestAnimationFrame(() => {
+      setDraggedIssueKey(issueKey);
+    });
     onIssueDragStart(event, issueKey);
   };
 

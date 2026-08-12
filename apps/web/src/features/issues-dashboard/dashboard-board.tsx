@@ -528,7 +528,9 @@ export function DashboardBoard({
                     onIssueDragEnd();
                   }}
                   onIssueDragStart={(event, draggedIssueKey) => {
-                    setDraggedIssueKey(draggedIssueKey);
+                    requestAnimationFrame(() => {
+                      setDraggedIssueKey(draggedIssueKey);
+                    });
                     onIssueDragStart(event, draggedIssueKey);
                   }}
                   onIssueSelect={onIssueSelect}
@@ -614,7 +616,9 @@ export function DashboardBoard({
                             onIssueDragEnd();
                           }}
                           onIssueDragStart={(event, draggedIssueKey) => {
-                            setDraggedIssueKey(draggedIssueKey);
+                            requestAnimationFrame(() => {
+                              setDraggedIssueKey(draggedIssueKey);
+                            });
                             onIssueDragStart(event, draggedIssueKey);
                           }}
                           onIssueSelect={onIssueSelect}

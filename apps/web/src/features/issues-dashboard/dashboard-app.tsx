@@ -908,42 +908,6 @@ export function DashboardApp() {
     cleanupDragArtifacts();
     event.dataTransfer.setData("issue-key", issueKey);
     event.dataTransfer.effectAllowed = "move";
-    const dragElement = event.currentTarget;
-    const dragElementRect = dragElement.getBoundingClientRect();
-
-    activeDragElementRef.current = {
-      boxShadow: dragElement.style.boxShadow,
-      element: dragElement,
-      opacity: dragElement.style.opacity,
-      transform: dragElement.style.transform,
-      transition: dragElement.style.transition,
-    };
-
-    dragElement.style.boxShadow =
-      "0 20px 38px -22px rgba(0,0,0,0.62), 0 10px 18px -12px rgba(0,0,0,0.42)";
-    dragElement.style.opacity = "0.94";
-    dragElement.style.transform = "translateY(-1px) scale(1.012)";
-    dragElement.style.transition = "none";
-
-    const previewElement = dragElement.cloneNode(true) as HTMLElement;
-    previewElement.style.boxShadow = dragElement.style.boxShadow;
-    previewElement.style.left = "-9999px";
-    previewElement.style.margin = "0";
-    previewElement.style.opacity = "0.98";
-    previewElement.style.pointerEvents = "none";
-    previewElement.style.position = "fixed";
-    previewElement.style.top = "-9999px";
-    previewElement.style.transform = "rotate(1.4deg) scale(1.01)";
-    previewElement.style.width = `${String(dragElementRect.width)}px`;
-    previewElement.style.zIndex = "2147483647";
-
-    document.body.append(previewElement);
-    dragPreviewElementRef.current = previewElement;
-    event.dataTransfer.setDragImage(
-      previewElement,
-      Math.min(52, dragElementRect.width * 0.28),
-      20,
-    );
   }
 
   function handleIssueDragEnd() {
