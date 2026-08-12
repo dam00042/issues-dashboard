@@ -198,10 +198,16 @@ const IssueCard = memo(function IssueCard({
   onRestoreIssue?: (issueKey: string) => void;
 }) {
   const [isCopied, setIsCopied] = useState(false);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const [tooltipText, setTooltipText] = useState("Copiar URL");
 
   useEffect(() => {
     if (isCopied) {
-      const timeout = setTimeout(() => setIsCopied(false), 2000);
+      setTooltipText("¡Copiado!");
+      const timeout = setTimeout(() => {
+        setIsCopied(false);
+        setTimeout(() => setTooltipText("Copiar URL"), 300);
+      }, 2000);
       return () => clearTimeout(timeout);
     }
   }, [isCopied]);
@@ -209,7 +215,7 @@ const IssueCard = memo(function IssueCard({
   return (
     <button
       type="button"
-      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
+      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
         isDragging
           ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
           : ""
@@ -233,24 +239,24 @@ const IssueCard = memo(function IssueCard({
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <Tooltip closeDelay={0} delay={80}>
+        <Tooltip closeDelay={0} delay={80} isOpen={isCopied || isTooltipOpen} onOpenChange={setIsTooltipOpen}>
           <Tooltip.Trigger>
             <div className="inline-flex">
               <Button
                 isIconOnly
                 size="sm"
                 variant="outline"
-                className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
                 onPress={() => {
                   void navigator.clipboard.writeText(issue.htmlUrl);
                   setIsCopied(true);
                 }}
               >
-                {isCopied ? <Check size={11} className="text-[rgb(var(--app-open))]" /> : <Copy size={11} />}
+                {isCopied ? <Check size={10} className="text-[rgb(var(--app-open))]" /> : <Copy size={10} />}
               </Button>
             </div>
           </Tooltip.Trigger>
-          <Tooltip.Content showArrow>{isCopied ? "¡Copiado!" : "Copiar URL"}</Tooltip.Content>
+          <Tooltip.Content showArrow>{tooltipText}</Tooltip.Content>
         </Tooltip>
 
         <Tooltip closeDelay={0} delay={80}>
@@ -260,10 +266,10 @@ const IssueCard = memo(function IssueCard({
                 isIconOnly
                 size="sm"
                 variant="outline"
-                className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
                 onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
               >
-                <ExternalLink size={11} />
+                <ExternalLink size={10} />
               </Button>
             </div>
           </Tooltip.Trigger>
@@ -278,10 +284,10 @@ const IssueCard = memo(function IssueCard({
                   isIconOnly
                   size="sm"
                   variant="outline"
-                  className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[#d97706]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[#d97706] shadow-sm hover:bg-[#d97706]/15"
+                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[#d97706]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[#d97706] shadow-sm hover:bg-[#d97706]/15"
                   onPress={() => onReviewIssue(issue.issueKey)}
                 >
-                  <Eye size={11} />
+                  <Eye size={10} />
                 </Button>
               </div>
             </Tooltip.Trigger>
@@ -297,10 +303,10 @@ const IssueCard = memo(function IssueCard({
                   isIconOnly
                   size="sm"
                   variant="outline"
-                  className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-open))]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-open))] shadow-sm hover:bg-[rgb(var(--app-open))]/15"
+                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-open))]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-open))] shadow-sm hover:bg-[rgb(var(--app-open))]/15"
                   onPress={() => onCompleteIssue(issue.issueKey)}
                 >
-                  <CheckCheck size={11} />
+                  <CheckCheck size={10} />
                 </Button>
               </div>
             </Tooltip.Trigger>
@@ -316,10 +322,10 @@ const IssueCard = memo(function IssueCard({
                   isIconOnly
                   size="sm"
                   variant="outline"
-                  className="h-6 w-6 min-w-6 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
                   onPress={() => onRestoreIssue(issue.issueKey)}
                 >
-                  <RotateCcw size={11} />
+                  <RotateCcw size={10} />
                 </Button>
               </div>
             </Tooltip.Trigger>

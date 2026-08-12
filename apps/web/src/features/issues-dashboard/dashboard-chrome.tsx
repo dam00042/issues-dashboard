@@ -223,10 +223,11 @@ export function SessionScreen({
   );
 }
 
-interface IconActionButtonProps {
+export interface IconActionButtonProps {
   children: ReactNode;
   className?: string;
   isDisabled?: boolean;
+  isOpen?: boolean;
   label: string;
   onPress?: () => void;
 }
@@ -235,11 +236,14 @@ export function IconActionButton({
   children,
   className,
   isDisabled = false,
+  isOpen: forcedIsOpen,
   label,
   onPress,
 }: IconActionButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <Tooltip closeDelay={0} delay={120}>
+    <Tooltip closeDelay={0} delay={120} isOpen={forcedIsOpen || isOpen} onOpenChange={setIsOpen}>
       <Tooltip.Trigger>
         <div className="inline-flex">
           <Button
@@ -266,17 +270,23 @@ export function IconActionButton({
 
 export function CopyUrlButton({ url }: { url: string }) {
   const [isCopied, setIsCopied] = useState(false);
+  const [tooltipText, setTooltipText] = useState("Copiar URL");
 
   useEffect(() => {
     if (isCopied) {
-      const timeout = setTimeout(() => setIsCopied(false), 2000);
+      setTooltipText("¡Copiado!");
+      const timeout = setTimeout(() => {
+        setIsCopied(false);
+        setTimeout(() => setTooltipText("Copiar URL"), 300);
+      }, 2000);
       return () => clearTimeout(timeout);
     }
   }, [isCopied]);
 
   return (
     <IconActionButton
-      label={isCopied ? "¡Copiado!" : "Copiar URL"}
+      isOpen={isCopied ? true : undefined}
+      label={tooltipText}
       onPress={() => {
         void navigator.clipboard.writeText(url);
         setIsCopied(true);
