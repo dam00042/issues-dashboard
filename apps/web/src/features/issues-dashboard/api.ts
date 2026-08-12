@@ -52,14 +52,24 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const message =
+    let message = "No se pudo completar la petición.";
+
+    if (
       typeof payload === "object" &&
       payload !== null &&
       ("detail" in payload || "message" in payload)
-        ? ((payload as { detail?: string; message?: string }).detail ??
-          (payload as { detail?: string; message?: string }).message ??
-          "No se pudo completar la petición.")
-        : "No se pudo completar la petición.";
+    ) {
+      const parsedPayload = payload as { detail?: unknown; message?: unknown };
+      const detail = parsedPayload.detail ?? parsedPayload.message;
+
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail)) {
+        message = JSON.stringify(detail);
+      } else if (typeof detail === "object" && detail !== null) {
+        message = JSON.stringify(detail);
+      }
+    }
 
     throw new ApiError(message, response.status);
   }
@@ -217,7 +227,10 @@ export async function updateIssueCompletionState(
     body: JSON.stringify({
       ...buildIssueReferencePayload(state),
       isCompleted: state.state.localCompletedAt !== null,
-      state: state.state,
+      state: (() => {
+        const { status, ...sanitized } = state.state;
+        return sanitized;
+      })(),
     }),
     headers: {
       "Content-Type": "application/json",
@@ -249,8 +262,14 @@ export async function updateIssueNotes(state: SyncStateItem): Promise<number> {
 export async function syncIssueStates(
   states: SyncStateItem[],
 ): Promise<number> {
+  // Strip the frontend-only 'status' field to satisfy FastAPI's extra="forbid"
+  const sanitizedStates = states.map((item) => {
+    const { status, ...sanitizedState } = item.state;
+    return { ...item, state: sanitizedState };
+  });
+
   const response = await fetch(`${getApiBaseUrl()}/api/issues/sync-state`, {
-    body: JSON.stringify({ states }),
+    body: JSON.stringify({ states: sanitizedStates }),
     headers: {
       "Content-Type": "application/json",
     },

@@ -896,7 +896,7 @@ export function DashboardApp() {
         isPinned: priority === null ? false : localState.isPinned,
         priority,
       }),
-      { flush: true, trackDirty: false },
+      { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
   }
@@ -990,7 +990,7 @@ export function DashboardApp() {
         priority: null,
         status: "completed" as LocalIssueStatus,
       }),
-      { flush: true, trackDirty: false },
+      { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
     setSelectedIssueKey(null);
@@ -1008,7 +1008,7 @@ export function DashboardApp() {
         priority: null,
         status: "in_review" as LocalIssueStatus,
       }),
-      { flush: true, trackDirty: false },
+      { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
     setSelectedIssueKey(null);
@@ -1026,7 +1026,7 @@ export function DashboardApp() {
         priority: localState.lastPriorityBeforeCompletion,
         status: "active" as LocalIssueStatus,
       }),
-      { flush: true, trackDirty: false },
+      { flush: false, trackDirty: false },
     );
     void persistSingleIssueMutation(issueKey);
   }
