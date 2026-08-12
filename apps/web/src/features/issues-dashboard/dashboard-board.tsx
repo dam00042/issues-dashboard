@@ -233,11 +233,11 @@ const IssueCard = memo(function IssueCard({
       onDragEnd={onIssueDragEnd}
       onDragStart={(event) => onIssueDragStart(event, issue.issueKey)}
     >
-      <div aria-hidden className="absolute right-2.5 top-2 flex items-center gap-1.5">
+      <div aria-hidden className="absolute right-2.5 top-2.5 flex h-2 items-center gap-1.5">
         {issue.localState.isPinned ? (
           <Pin size={11} className="text-[rgb(var(--app-muted))]" />
         ) : null}
-        <span className={`h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
+        <span className={`shrink-0 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
       </div>
 
       <div
