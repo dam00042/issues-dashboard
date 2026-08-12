@@ -592,6 +592,7 @@ export function DashboardBoard({
                   selectedIssueKey={selectedIssueKey}
                   onCompleteIssue={onCompleteIssue}
                   onReviewIssue={onReviewIssue}
+                  onTogglePin={onTogglePin}
                 />
               ))
             )}
@@ -680,6 +681,7 @@ export function DashboardBoard({
                           selectedIssueKey={selectedIssueKey}
                           onCompleteIssue={onCompleteIssue}
                           onReviewIssue={onReviewIssue}
+                          onTogglePin={onTogglePin}
                         />
                       ))
                     )}
