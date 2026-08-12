@@ -136,6 +136,7 @@ const IssueCard = memo(function IssueCard({
   onIssueDragStart,
   onIssueSelect,
   onRestoreIssue,
+  onTogglePin,
 }: {
   isDragging: boolean;
   issue: DashboardIssue;
@@ -144,6 +145,7 @@ const IssueCard = memo(function IssueCard({
   onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
+  onTogglePin?: (issueKey: string) => void;
 }) {
   const [isCopied, setIsCopied] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -224,6 +226,25 @@ const IssueCard = memo(function IssueCard({
           <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
         </Tooltip>
 
+        {onTogglePin ? (
+          <Tooltip closeDelay={0} delay={80}>
+            <Tooltip.Trigger>
+              <div className="inline-flex">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="outline"
+                  className={`h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
+                  onPress={() => onTogglePin(issue.issueKey)}
+                >
+                  <Pin size={10} className={issue.localState.isPinned ? "fill-current" : ""} />
+                </Button>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Content showArrow>{issue.localState.isPinned ? "Desfijar" : "Fijar"}</Tooltip.Content>
+          </Tooltip>
+        ) : null}
+
 
         <Tooltip closeDelay={0} delay={80}>
           <Tooltip.Trigger>
@@ -279,6 +300,7 @@ function BoardColumn({
   onIssueDragStart,
   onIssueSelect,
   onRestoreIssue,
+  onTogglePin,
   onIssueDrop,
 }: {
   column: ColumnDef;
@@ -289,6 +311,7 @@ function BoardColumn({
   onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
+  onTogglePin?: (issueKey: string) => void;
   onIssueDrop?: (event: DragEvent<HTMLElement>) => void;
 }) {
   const Icon = column.icon;
@@ -340,6 +363,7 @@ function BoardColumn({
                 onIssueDragStart={onIssueDragStart}
                 onIssueSelect={onIssueSelect}
                 onRestoreIssue={onRestoreIssue}
+                onTogglePin={onTogglePin}
               />
             ))
           )}
@@ -537,8 +561,10 @@ export function DashboardCompletedBoard({
         onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
+        onTogglePin={onTogglePin}
         onIssueDrop={() => {
           if (draggedIssueKey) onReviewIssue(draggedIssueKey);
+          setDraggedIssueKey(null);
         }}
       />
 
@@ -556,8 +582,10 @@ export function DashboardCompletedBoard({
         onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
+        onTogglePin={onTogglePin}
         onIssueDrop={() => {
           if (draggedIssueKey) onCompleteIssue(draggedIssueKey);
+          setDraggedIssueKey(null);
         }}
       />
 
