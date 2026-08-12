@@ -142,7 +142,7 @@ const IssueCard = memo(function IssueCard({
   issue: DashboardIssue;
   selectedIssueKey: string | null;
   onIssueDragEnd: () => void;
-  onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
+  onIssueDragStart: (event: React.DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
   onTogglePin?: (issueKey: string) => void;
@@ -179,12 +179,14 @@ const IssueCard = memo(function IssueCard({
       onClick={() => onIssueSelect(issue.issueKey)}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onIssueSelect(issue.issueKey); }}
       onDragEnd={onIssueDragEnd}
-      onDragStart={(event) => onIssueDragStart(event as unknown as DragEvent<HTMLElement>, issue.issueKey)}
+      onDragStart={(event) => onIssueDragStart(event, issue.issueKey)}
     >
-      <span
-        aria-hidden
-        className={`absolute right-2.5 top-2.5 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`}
-      />
+      <div aria-hidden className="absolute right-2 top-2 flex items-center gap-1">
+        {issue.localState.isPinned ? (
+          <Pin size={9} className="text-[rgb(var(--app-accent))]/70" />
+        ) : null}
+        <span className={`h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
+      </div>
 
       <div
         className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
@@ -282,7 +284,6 @@ const IssueCard = memo(function IssueCard({
             : ""}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
-          {issue.localState.isPinned ? <Pin size={11} /> : null}
           {hasMeaningfulNotes(issue.localState.noteBlocks) ? (
             <NotebookText size={11} />
           ) : null}
