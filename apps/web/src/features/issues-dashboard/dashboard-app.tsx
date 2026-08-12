@@ -933,8 +933,12 @@ export function DashboardApp() {
     ghost.style.opacity = "0.9";
     ghost.style.transform = "rotate(-2deg)";
     ghost.style.boxShadow = "0 18px 34px -22px rgba(0,0,0,0.5)";
+    
+    // Use valid CSS Color Level 4 syntax for space-separated variables + alpha
     ghost.style.background = "rgb(var(--app-surface))";
-    ghost.style.border = "1px solid rgba(var(--app-accent), 0.55)";
+    ghost.style.borderColor = "rgb(var(--app-accent) / 0.55)";
+    ghost.style.borderWidth = "1px";
+    ghost.style.borderStyle = "solid";
     ghost.style.borderRadius = "0.9rem";
     ghost.style.pointerEvents = "none";
     ghost.style.zIndex = "9999";
