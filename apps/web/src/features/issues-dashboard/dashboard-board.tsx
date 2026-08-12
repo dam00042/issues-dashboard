@@ -186,6 +186,7 @@ const IssueCard = memo(function IssueCard({
   onCompleteIssue,
   onReviewIssue,
   onRestoreIssue,
+  onTogglePin,
 }: {
   isDragging: boolean;
   issue: DashboardIssue;
@@ -196,6 +197,7 @@ const IssueCard = memo(function IssueCard({
   onCompleteIssue?: (issueKey: string) => void;
   onReviewIssue?: (issueKey: string) => void;
   onRestoreIssue?: (issueKey: string) => void;
+  onTogglePin?: (issueKey: string) => void;
 }) {
   const [isCopied, setIsCopied] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -275,6 +277,25 @@ const IssueCard = memo(function IssueCard({
           </Tooltip.Trigger>
           <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
         </Tooltip>
+
+        {onTogglePin ? (
+          <Tooltip closeDelay={0} delay={80}>
+            <Tooltip.Trigger>
+              <div className="inline-flex">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="outline"
+                  className={`h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
+                  onPress={() => onTogglePin(issue.issueKey)}
+                >
+                  <Pin size={10} className={issue.localState.isPinned ? "fill-current" : ""} />
+                </Button>
+              </div>
+            </Tooltip.Trigger>
+            <Tooltip.Content showArrow>{issue.localState.isPinned ? "Desfijar" : "Fijar"}</Tooltip.Content>
+          </Tooltip>
+        ) : null}
 
         {onReviewIssue ? (
           <Tooltip closeDelay={0} delay={80}>
