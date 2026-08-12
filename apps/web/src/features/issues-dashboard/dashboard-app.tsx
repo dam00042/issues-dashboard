@@ -725,13 +725,13 @@ export function DashboardApp() {
     backendReadyError ||
     databaseTransferError ||
     snapshotConnectivityNotice ||
-    (isSyncing ? "Actualizando dashboard..." : "");
+    "";
   const topbarHasError = Boolean(
     syncError || backendReadyError || databaseTransferError,
   );
   const topbarHasWarning =
     !topbarHasError && Boolean(snapshotConnectivityNotice);
-  const topbarShowSpinner = isSyncing && !topbarHasError && !topbarHasWarning;
+  const topbarShowSpinner = false;
   const showSessionScreen =
     !sessionLoading &&
     (!sessionConfigured || sessionEditing) &&
