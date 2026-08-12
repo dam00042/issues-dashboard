@@ -215,8 +215,9 @@ const IssueCard = memo(function IssueCard({
   }, [isCopied]);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
         isDragging
           ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
@@ -228,8 +229,9 @@ const IssueCard = memo(function IssueCard({
       }`}
       draggable
       onClick={() => onIssueSelect(issue.issueKey)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onIssueSelect(issue.issueKey); }}
       onDragEnd={onIssueDragEnd}
-      onDragStart={(event) => onIssueDragStart(event, issue.issueKey)}
+      onDragStart={(event) => onIssueDragStart(event as unknown as DragEvent<HTMLElement>, issue.issueKey)}
     >
       <span
         aria-hidden
@@ -375,7 +377,7 @@ const IssueCard = memo(function IssueCard({
           ) : null}
         </div>
       </div>
-    </button>
+    </div>
   );
 });
 
