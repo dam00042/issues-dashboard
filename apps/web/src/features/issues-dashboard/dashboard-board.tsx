@@ -484,7 +484,7 @@ export function DashboardBoard({
       )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
 
   const boardClassName = isWideLayout
-    ? `grid h-full min-h-0 ${!dragState ? "transition-[grid-template-columns] duration-300 ease-in-out" : ""}`
+    ? "grid h-full min-h-0"
     : "flex h-full min-h-0 flex-col gap-3";
 
   return (
@@ -669,11 +669,7 @@ export function DashboardBoard({
 
       {isSidebarExpanded && sidebarIssue ? (
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
-          <div
-            className="flex min-h-0 flex-1 flex-col"
-            style={{ minWidth: "380px" }}
-          >
-            <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
+          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="min-w-0 truncate font-medium text-[rgb(var(--app-foreground))]">
@@ -822,7 +818,6 @@ export function DashboardBoard({
                 onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
               }
             />
-          </div>
           </div>
         </aside>
       ) : !isWideLayout ? (
