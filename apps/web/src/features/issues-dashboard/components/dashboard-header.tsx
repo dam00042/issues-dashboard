@@ -9,14 +9,13 @@ import {
   Monitor,
   MoonStar,
   RefreshCw,
-  Settings2,
   SlidersHorizontal,
   SunMedium,
   UserRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import type { DashboardSection, ThemeDefinition } from "@/features/issues-dashboard/types";
+import type { DashboardSection } from "@/features/issues-dashboard/types";
 import type { ThemeMode } from "@/types/desktop";
 
 export interface DashboardHeaderProps {
@@ -26,7 +25,6 @@ export interface DashboardHeaderProps {
   topbarHasError: boolean;
   topbarHasWarning: boolean;
   topbarShowSpinner: boolean;
-  themeDefinitions: ThemeDefinition[];
   username: string | null;
   onClearSession: () => void;
   onEditSession: () => void;
@@ -43,7 +41,6 @@ export function DashboardHeader({
   topbarHasError,
   topbarHasWarning,
   topbarShowSpinner,
-  themeDefinitions,
   username,
   onClearSession,
   onEditSession,
@@ -52,12 +49,13 @@ export function DashboardHeader({
   onSectionChange,
   onCycleTheme,
 }: DashboardHeaderProps) {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme } = useTheme();
 
-  function getThemeIcon(themeValue: ThemeMode) {
-    if (themeValue === "system") return <Monitor size={16} />;
-    if (resolvedTheme === "dark") return <MoonStar size={16} />;
-    return <SunMedium size={16} />;
+  function renderThemeIcon() {
+    const currentTheme = (theme as ThemeMode) ?? "system";
+    if (currentTheme === "light") return <SunMedium size={16} />;
+    if (currentTheme === "dark") return <MoonStar size={16} />;
+    return <Monitor size={16} />;
   }
 
   return (
@@ -132,7 +130,7 @@ export function DashboardHeader({
             variant="outline"
             onPress={onCycleTheme}
           >
-            {getThemeIcon("system")}
+            {renderThemeIcon()}
           </Button>
           <Button
             isIconOnly
@@ -157,41 +155,22 @@ export function DashboardHeader({
               </Dropdown.Trigger>
               <Dropdown.Popover>
                 <Dropdown.Menu aria-label="Opciones de sesión">
-                  <Dropdown.Section aria-label="Tema">
-                    {themeDefinitions.map((def) => (
-                      <Dropdown.Item
-                        key={def.value}
-                        id={def.value}
-                        onPress={() => setTheme(def.value)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {getThemeIcon(def.value)}
-                          <span>{def.label}</span>
-                        </div>
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Section>
-                  <Dropdown.Section aria-label="Sesión">
-                    <Dropdown.Item
-                      id="edit-session"
-                      onPress={onEditSession}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Settings2 size={15} />
-                        <span>Editar sesión</span>
-                      </div>
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      id="logout"
-                      className="text-[rgb(var(--app-danger))]"
-                      onPress={onClearSession}
-                    >
-                      <div className="flex items-center gap-2">
-                        <LogOut size={14} />
-                        <span>Cerrar sesión</span>
-                      </div>
-                    </Dropdown.Item>
-                  </Dropdown.Section>
+                  <Dropdown.Item id="edit-session" onPress={onEditSession}>
+                    <div className="flex items-center gap-2">
+                      <UserRound size={14} />
+                      <span>Editar sesión</span>
+                    </div>
+                  </Dropdown.Item>
+                  <Dropdown.Item
+                    id="logout"
+                    className="text-[rgb(var(--app-danger))]"
+                    onPress={onClearSession}
+                  >
+                    <div className="flex items-center gap-2">
+                      <LogOut size={14} className="text-[rgb(var(--app-danger))]" />
+                      <span className="text-[rgb(var(--app-danger))]">Cerrar sesión</span>
+                    </div>
+                  </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown.Popover>
             </Dropdown>

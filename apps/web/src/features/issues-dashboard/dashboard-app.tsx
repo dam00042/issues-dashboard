@@ -28,6 +28,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { ActiveBoard } from "@/features/issues-dashboard/boards/active-board";
 import { CompletedBoard } from "@/features/issues-dashboard/boards/completed-board";
+import { DashboardFilterBar } from "@/features/issues-dashboard/components/dashboard-filter-bar";
 import { DashboardHeader } from "@/features/issues-dashboard/components/dashboard-header";
 import { DesktopTitleBar } from "@/features/issues-dashboard/components/desktop-title-bar";
 import { IssueCard } from "@/features/issues-dashboard/components/issue-card";
@@ -106,6 +107,8 @@ export function DashboardApp() {
   const [closedWindowDraftError, setClosedWindowDraftError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedProject, setSelectedProject] = useState("all");
+  const [selectedPriority, setSelectedPriority] = useState("all");
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeDragIssueKey, setActiveDragIssueKey] = useState<string | null>(
@@ -187,44 +190,65 @@ export function DashboardApp() {
     setClosedWindowDraft(normalized);
   }, []);
 
+  const projects = useMemo(() => {
+    const set = new Set<string>();
+    issues.forEach((issue) => {
+      if (issue.repository?.name) {
+        set.add(issue.repository.name);
+      }
+    });
+    return Array.from(set).sort();
+  }, [issues]);
+
+  const filteredIssues = useMemo(() => {
+    return issues.filter((issue) => {
+      if (deferredSearch.trim()) {
+        const q = deferredSearch.toLowerCase();
+        const matchTitle = issue.title.toLowerCase().includes(q);
+        const matchKey = issue.issueKey.toLowerCase().includes(q);
+        const matchRepo = issue.repository.name.toLowerCase().includes(q);
+        const matchNum = String(issue.number).includes(q);
+        if (!matchTitle && !matchKey && !matchRepo && !matchNum) return false;
+      }
+      if (selectedProject !== "all") {
+        if (issue.repository.name !== selectedProject) return false;
+      }
+      if (selectedPriority !== "all") {
+        if (selectedPriority === "none") {
+          if (issue.localState.priority !== null) return false;
+        } else {
+          if (issue.localState.priority !== Number(selectedPriority)) return false;
+        }
+      }
+      return true;
+    });
+  }, [issues, deferredSearch, selectedProject, selectedPriority]);
+
   const activeIssues = useMemo(
-    () => issues.filter((issue) => issue.localState.status === "active"),
-    [issues],
+    () => filteredIssues.filter((issue) => issue.localState.status === "active"),
+    [filteredIssues],
   );
 
   const reviewIssues = useMemo(
     () =>
       sortIssuesByPinnedAndUpdated(
-        filterIssuesBySearch(
-          issues.filter((issue) => issue.localState.status === "in_review"),
-          deferredSearch,
-        ),
+        filteredIssues.filter((issue) => issue.localState.status === "in_review"),
       ),
-    [issues, deferredSearch],
+    [filteredIssues],
   );
 
   const completedIssues = useMemo(
     () =>
-      filterIssuesBySearch(
-        issues.filter((issue) => issue.localState.status === "completed"),
-        deferredSearch,
-      ),
-    [issues, deferredSearch],
-  );
-
-  const filteredActiveIssues = useMemo(
-    () => filterIssuesBySearch(activeIssues, deferredSearch),
-    [activeIssues, deferredSearch],
+      filteredIssues.filter((issue) => issue.localState.status === "completed"),
+    [filteredIssues],
   );
 
   const backlogIssues = useMemo(
     () =>
       sortIssuesByPinnedAndUpdated(
-        filteredActiveIssues.filter(
-          (issue) => issue.localState.priority === null,
-        ),
+        activeIssues.filter((issue) => issue.localState.priority === null),
       ),
-    [filteredActiveIssues],
+    [activeIssues],
   );
 
   const priorityBuckets = useMemo(
@@ -232,12 +256,12 @@ export function DashboardApp() {
       PRIORITY_DEFINITIONS.map((definition) => ({
         ...definition,
         issues: sortIssuesByPinnedAndUpdated(
-          filteredActiveIssues.filter(
+          activeIssues.filter(
             (issue) => issue.localState.priority === definition.value,
           ),
         ),
       })),
-    [filteredActiveIssues],
+    [activeIssues],
   );
 
   const activeIssue = useMemo(
@@ -365,6 +389,16 @@ export function DashboardApp() {
     );
   }
 
+  const hasActiveFilters = Boolean(
+    search.trim() || selectedProject !== "all" || selectedPriority !== "all",
+  );
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setSelectedProject("all");
+    setSelectedPriority("all");
+  };
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[rgb(var(--app-bg))] font-sans antialiased">
       {isDesktopClient ? (
@@ -387,7 +421,6 @@ export function DashboardApp() {
             topbarHasError={topbarHasError}
             topbarHasWarning={topbarHasWarning}
             topbarShowSpinner={topbarShowSpinner}
-            themeDefinitions={THEMES}
             username={sessionStatus.username}
             onClearSession={() => void handleClearSession()}
             onCycleTheme={cycleTheme}
@@ -396,6 +429,19 @@ export function DashboardApp() {
             onRefresh={() => void fetchSnapshotData(closedWindow)}
             onSectionChange={setSection}
           />
+
+          <DashboardFilterBar
+            hasActiveFilters={hasActiveFilters}
+            projects={projects}
+            search={search}
+            selectedPriority={selectedPriority}
+            selectedProject={selectedProject}
+            onClearFilters={handleClearFilters}
+            onPriorityChange={setSelectedPriority}
+            onProjectChange={setSelectedProject}
+            onSearchChange={setSearch}
+          />
+
           <div className="min-h-0 flex-1">
         {section === "board" ? (
           <DndContext
