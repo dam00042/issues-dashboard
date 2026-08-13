@@ -142,7 +142,7 @@ export function CompletedBoard({
   }, [dragState]);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 gap-3">
+    <div className={`flex h-full min-h-0 min-w-0 ${sidebarIssue ? "gap-0" : "gap-3"}`}>
       {/* 50/50 Quadrants Area - "En revisión" and "Completadas localmente" split available space 50/50 */}
       <div className="grid flex-1 min-h-0 min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
         {/* Quadrant 1: En revisión */}
