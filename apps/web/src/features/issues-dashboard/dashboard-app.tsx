@@ -109,6 +109,7 @@ export function DashboardApp() {
   const [search, setSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState("all");
   const [selectedPriority, setSelectedPriority] = useState("all");
+  const [selectedState, setSelectedState] = useState("all");
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeDragIssueKey, setActiveDragIssueKey] = useState<string | null>(
@@ -202,17 +203,32 @@ export function DashboardApp() {
 
   const filteredIssues = useMemo(() => {
     return issues.filter((issue) => {
+      // 1. Search Query Filter
       if (deferredSearch.trim()) {
         const q = deferredSearch.toLowerCase();
         const matchTitle = issue.title.toLowerCase().includes(q);
         const matchKey = issue.issueKey.toLowerCase().includes(q);
-        const matchRepo = issue.repository.name.toLowerCase().includes(q);
+        const matchRepo = (issue.repository?.name || "").toLowerCase();
         const matchNum = String(issue.number).includes(q);
-        if (!matchTitle && !matchKey && !matchRepo && !matchNum) return false;
+        if (!matchTitle && !matchKey && !matchRepo.includes(q) && !matchNum)
+          return false;
       }
+
+      // 2. Project Filter ("all" | "edi" | "infra" | "none")
       if (selectedProject !== "all") {
-        if (issue.repository.name !== selectedProject) return false;
+        const repoName = (issue.repository?.name || "").toLowerCase();
+        if (selectedProject === "edi") {
+          if (!repoName.includes("edi")) return false;
+        } else if (selectedProject === "infra") {
+          if (!repoName.includes("infra")) return false;
+        } else if (selectedProject === "none") {
+          if (repoName.includes("edi") || repoName.includes("infra")) return false;
+        } else {
+          if (issue.repository?.name !== selectedProject) return false;
+        }
       }
+
+      // 3. Priority Filter ("all" | "1" | "2" | "3" | "4" | "none")
       if (selectedPriority !== "all") {
         if (selectedPriority === "none") {
           if (issue.localState.priority !== null) return false;
@@ -220,9 +236,26 @@ export function DashboardApp() {
           if (issue.localState.priority !== Number(selectedPriority)) return false;
         }
       }
+
+      // 4. State Filter ("all" | "open" | "in_review" | "closed")
+      if (selectedState !== "all") {
+        if (selectedState === "open") {
+          if (issue.localState.status !== "active" && issue.remoteState !== "open")
+            return false;
+        } else if (selectedState === "in_review") {
+          if (issue.localState.status !== "in_review") return false;
+        } else if (selectedState === "closed") {
+          if (
+            issue.localState.status !== "completed" &&
+            issue.remoteState !== "closed"
+          )
+            return false;
+        }
+      }
+
       return true;
     });
-  }, [issues, deferredSearch, selectedProject, selectedPriority]);
+  }, [issues, deferredSearch, selectedProject, selectedPriority, selectedState]);
 
   const activeIssues = useMemo(
     () => filteredIssues.filter((issue) => issue.localState.status === "active"),
@@ -390,13 +423,17 @@ export function DashboardApp() {
   }
 
   const hasActiveFilters = Boolean(
-    search.trim() || selectedProject !== "all" || selectedPriority !== "all",
+    search.trim() ||
+      selectedProject !== "all" ||
+      selectedPriority !== "all" ||
+      selectedState !== "all",
   );
 
   const handleClearFilters = () => {
     setSearch("");
     setSelectedProject("all");
     setSelectedPriority("all");
+    setSelectedState("all");
   };
 
   return (
@@ -432,13 +469,14 @@ export function DashboardApp() {
 
           <DashboardFilterBar
             hasActiveFilters={hasActiveFilters}
-            projects={projects}
             search={search}
             selectedPriority={selectedPriority}
             selectedProject={selectedProject}
+            selectedState={selectedState}
             onClearFilters={handleClearFilters}
             onPriorityChange={setSelectedPriority}
             onProjectChange={setSelectedProject}
+            onStateChange={setSelectedState}
             onSearchChange={setSearch}
           />
 
