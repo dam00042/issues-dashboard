@@ -46,8 +46,8 @@ function getStateIcon(value: string) {
 
 function getStateLabel(value: string): string {
   if (value === "all") return "Todos los estados";
-  if (value === "open") return "Abiertas (Open)";
-  if (value === "closed") return "Cerradas (Closed)";
+  if (value === "open") return "Abiertas";
+  if (value === "closed") return "Cerradas";
   return value;
 }
 
@@ -145,13 +145,13 @@ export function DashboardFilterBar({
                 <Dropdown.Item id="open" onPress={() => onStateChange("open")}>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-[#22c55e]" />
-                    <span>Abiertas (Open)</span>
+                    <span>Abiertas</span>
                   </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="closed" onPress={() => onStateChange("closed")}>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-[#a855f7]" />
-                    <span>Cerradas (Closed)</span>
+                    <span>Cerradas</span>
                   </div>
                 </Dropdown.Item>
               </Dropdown.Menu>
