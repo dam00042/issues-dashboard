@@ -297,13 +297,19 @@ export function DashboardApp() {
     [activeIssues],
   );
 
-  const activeIssue = useMemo(
-    () =>
-      selectedIssueKey
-        ? issues.find((issue) => issue.issueKey === selectedIssueKey) ?? null
-        : null,
-    [issues, selectedIssueKey],
-  );
+  const handleSectionChange = (nextSection: DashboardSection) => {
+    setSection(nextSection);
+    setSelectedIssueKey(null);
+  };
+
+  const activeIssue = useMemo(() => {
+    if (!selectedIssueKey) return null;
+    const issue = issues.find((item) => item.issueKey === selectedIssueKey) ?? null;
+    if (!issue) return null;
+    if (section === "board" && issue.localState.status !== "active") return null;
+    if (section === "completed" && issue.localState.status === "active") return null;
+    return issue;
+  }, [issues, selectedIssueKey, section]);
 
   const draggedIssue = useMemo(
     () =>
@@ -464,7 +470,7 @@ export function DashboardApp() {
             onEditSession={() => setIsEditingSession(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onRefresh={() => void fetchSnapshotData(closedWindow)}
-            onSectionChange={setSection}
+            onSectionChange={handleSectionChange}
           />
 
           <DashboardFilterBar
