@@ -40,7 +40,6 @@ function getProjectLabel(value: string): string {
 
 function getStateIcon(value: string) {
   if (value === "open") return <CheckCircle2 size={14} className="text-[#22c55e]" />;
-  if (value === "in_review") return <CheckCircle2 size={14} className="text-[#d97706]" />;
   if (value === "closed") return <CheckCircle2 size={14} className="text-[#a855f7]" />;
   return <CheckCircle2 size={14} className="text-[rgb(var(--app-muted))]" />;
 }
@@ -48,7 +47,6 @@ function getStateIcon(value: string) {
 function getStateLabel(value: string): string {
   if (value === "all") return "Todos los estados";
   if (value === "open") return "Abiertas (Open)";
-  if (value === "in_review") return "En revisión";
   if (value === "closed") return "Cerradas (Closed)";
   return value;
 }
@@ -148,12 +146,6 @@ export function DashboardFilterBar({
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-[#22c55e]" />
                     <span>Abiertas (Open)</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="in_review" onPress={() => onStateChange("in_review")}>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-[#d97706]" />
-                    <span>En revisión</span>
                   </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="closed" onPress={() => onStateChange("closed")}>
