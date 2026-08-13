@@ -321,9 +321,12 @@ export function ActiveBoard({
       <DroppableBacklog className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
         <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
-              Backlog
-            </h2>
+            <div className="inline-flex items-center gap-2">
+              <List size={16} className="text-[rgb(var(--app-muted))]" />
+              <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
+                Backlog
+              </h2>
+            </div>
             <span className="rounded-full bg-[rgb(var(--app-surface-strong))] px-2 py-0.5 text-[11px] font-bold text-[rgb(var(--app-muted))]">
               {backlogIssues.length}
             </span>
