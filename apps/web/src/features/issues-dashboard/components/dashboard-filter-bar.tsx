@@ -4,10 +4,12 @@ import { Button, Dropdown, Input } from "@heroui/react";
 import {
   AlertCircle,
   CheckCircle2,
+  Database,
   FolderGit2,
+  FolderMinus,
   RotateCcw,
   Search,
-  SlidersHorizontal,
+  Server,
   X,
 } from "lucide-react";
 
@@ -24,12 +26,27 @@ export interface DashboardFilterBarProps {
   onSearchChange: (search: string) => void;
 }
 
+function getProjectIcon(value: string) {
+  if (value === "edi") return <Database size={14} className="text-[#0070f3]" />;
+  if (value === "infra") return <Server size={14} className="text-[#d97706]" />;
+  if (value === "none") return <FolderMinus size={14} className="text-[rgb(var(--app-muted))]" />;
+  return <FolderGit2 size={14} className="text-[rgb(var(--app-muted))]" />;
+}
+
 function getProjectLabel(value: string): string {
   if (value === "all") return "Todos los proyectos";
-  if (value === "edi") return "EDI (cembox-edi)";
-  if (value === "infra") return "INFRA (cembox-infra)";
-  if (value === "none") return "Sin proyecto";
+  if (value === "edi") return "EDI";
+  if (value === "infra") return "INFRA";
+  if (value === "none") return "No project";
   return value;
+}
+
+function getPriorityIcon(value: string) {
+  if (value === "1") return <AlertCircle size={14} className="text-[#ef4444]" />;
+  if (value === "2") return <AlertCircle size={14} className="text-[#f97316]" />;
+  if (value === "3") return <AlertCircle size={14} className="text-[#eab308]" />;
+  if (value === "4") return <AlertCircle size={14} className="text-[#3b82f6]" />;
+  return <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />;
 }
 
 function getPriorityLabel(value: string): string {
@@ -40,6 +57,13 @@ function getPriorityLabel(value: string): string {
   if (value === "4") return "Baja (P4)";
   if (value === "none") return "Sin prioridad";
   return value;
+}
+
+function getStateIcon(value: string) {
+  if (value === "open") return <CheckCircle2 size={14} className="text-[#22c55e]" />;
+  if (value === "in_review") return <CheckCircle2 size={14} className="text-[#d97706]" />;
+  if (value === "closed") return <CheckCircle2 size={14} className="text-[#a855f7]" />;
+  return <CheckCircle2 size={14} className="text-[rgb(var(--app-muted))]" />;
 }
 
 function getStateLabel(value: string): string {
@@ -93,23 +117,35 @@ export function DashboardFilterBar({
           <Dropdown>
             <Dropdown.Trigger className="button button--sm button--outline rounded-[0.8rem] px-2.5">
               <span className="flex items-center gap-1.5 text-xs font-medium">
-                <FolderGit2 size={14} className="text-[rgb(var(--app-muted))]" />
+                {getProjectIcon(selectedProject)}
                 <span>{getProjectLabel(selectedProject)}</span>
               </span>
             </Dropdown.Trigger>
             <Dropdown.Popover>
               <Dropdown.Menu aria-label="Filtrar por proyecto">
                 <Dropdown.Item id="all" onPress={() => onProjectChange("all")}>
-                  Todos los proyectos
+                  <div className="flex items-center gap-2">
+                    <FolderGit2 size={14} className="text-[rgb(var(--app-muted))]" />
+                    <span>Todos los proyectos</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="edi" onPress={() => onProjectChange("edi")}>
-                  EDI (cembox-edi-sap...)
+                  <div className="flex items-center gap-2">
+                    <Database size={14} className="text-[#0070f3]" />
+                    <span>EDI</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="infra" onPress={() => onProjectChange("infra")}>
-                  INFRA (cembox-infra...)
+                  <div className="flex items-center gap-2">
+                    <Server size={14} className="text-[#d97706]" />
+                    <span>INFRA</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="none" onPress={() => onProjectChange("none")}>
-                  Sin proyecto / Otros
+                  <div className="flex items-center gap-2">
+                    <FolderMinus size={14} className="text-[rgb(var(--app-muted))]" />
+                    <span>No project</span>
+                  </div>
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown.Popover>
@@ -119,29 +155,47 @@ export function DashboardFilterBar({
           <Dropdown>
             <Dropdown.Trigger className="button button--sm button--outline rounded-[0.8rem] px-2.5">
               <span className="flex items-center gap-1.5 text-xs font-medium">
-                <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />
+                {getPriorityIcon(selectedPriority)}
                 <span>{getPriorityLabel(selectedPriority)}</span>
               </span>
             </Dropdown.Trigger>
             <Dropdown.Popover>
               <Dropdown.Menu aria-label="Filtrar por prioridad">
                 <Dropdown.Item id="all" onPress={() => onPriorityChange("all")}>
-                  Todas las prioridades
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />
+                    <span>Todas las prioridades</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="1" onPress={() => onPriorityChange("1")}>
-                  🔴 Urgente (P1)
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#ef4444]" />
+                    <span>Urgente (P1)</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="2" onPress={() => onPriorityChange("2")}>
-                  🟠 Alta (P2)
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#f97316]" />
+                    <span>Alta (P2)</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="3" onPress={() => onPriorityChange("3")}>
-                  🟡 Media (P3)
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#eab308]" />
+                    <span>Media (P3)</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="4" onPress={() => onPriorityChange("4")}>
-                  🔵 Baja (P4)
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#3b82f6]" />
+                    <span>Baja (P4)</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="none" onPress={() => onPriorityChange("none")}>
-                  ⚪ Sin prioridad (Backlog)
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />
+                    <span>Sin prioridad</span>
+                  </div>
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown.Popover>
@@ -151,23 +205,35 @@ export function DashboardFilterBar({
           <Dropdown>
             <Dropdown.Trigger className="button button--sm button--outline rounded-[0.8rem] px-2.5">
               <span className="flex items-center gap-1.5 text-xs font-medium">
-                <CheckCircle2 size={14} className="text-[rgb(var(--app-muted))]" />
+                {getStateIcon(selectedState)}
                 <span>{getStateLabel(selectedState)}</span>
               </span>
             </Dropdown.Trigger>
             <Dropdown.Popover>
               <Dropdown.Menu aria-label="Filtrar por estado">
                 <Dropdown.Item id="all" onPress={() => onStateChange("all")}>
-                  Todos los estados
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-[rgb(var(--app-muted))]" />
+                    <span>Todos los estados</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="open" onPress={() => onStateChange("open")}>
-                  🟢 Abiertas (Open)
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-[#22c55e]" />
+                    <span>Abiertas (Open)</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="in_review" onPress={() => onStateChange("in_review")}>
-                  🟠 En revisión
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-[#d97706]" />
+                    <span>En revisión</span>
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="closed" onPress={() => onStateChange("closed")}>
-                  🟣 Cerradas (Closed)
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-[#a855f7]" />
+                    <span>Cerradas (Closed)</span>
+                  </div>
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown.Popover>
