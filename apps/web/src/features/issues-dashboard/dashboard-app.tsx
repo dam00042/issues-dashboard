@@ -230,16 +230,11 @@ export function DashboardApp() {
       // 3. GitHub / App State Filter ("all" | "open" | "in_review" | "closed")
       if (selectedState !== "all") {
         if (selectedState === "open") {
-          if (issue.localState.status !== "active" && issue.remoteState !== "open")
-            return false;
+          if (issue.remoteState !== "open") return false;
         } else if (selectedState === "in_review") {
           if (issue.localState.status !== "in_review") return false;
         } else if (selectedState === "closed") {
-          if (
-            issue.localState.status !== "completed" &&
-            issue.remoteState !== "closed"
-          )
-            return false;
+          if (issue.remoteState !== "closed") return false;
         }
       }
 
