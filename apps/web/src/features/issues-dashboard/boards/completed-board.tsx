@@ -1,13 +1,11 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { Button } from "@heroui/react";
 import {
   CheckCheck,
   ExternalLink,
   Eye,
   PanelRightClose,
-  PanelRightOpen,
   RotateCcw,
 } from "lucide-react";
 import type { CSSProperties } from "react";
@@ -99,7 +97,6 @@ export function CompletedBoard({
   reviewIssues,
   selectedIssueKey,
   onCollapseSidebar,
-  onExpandSidebar,
   onIssueSelect,
   onRestoreIssue,
   onReviewIssue,
@@ -111,7 +108,7 @@ export function CompletedBoard({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 gap-3">
-      {/* 50/50 Quadrants Area - Always splits available space 50/50 equally */}
+      {/* 50/50 Quadrants Area - "En revisión" and "Completadas localmente" split available space 50/50 */}
       <div className="grid flex-1 min-h-0 min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
         {/* Quadrant 1: En revisión */}
         <DroppableBucket
@@ -172,7 +169,7 @@ export function CompletedBoard({
         </DroppableBucket>
       </div>
 
-      {/* Detail Sidebar - Resizes smoothly beside the 50/50 main grid */}
+      {/* Detail Sidebar - Resizes beside the 50/50 main grid when opened */}
       {isSidebarVisible && sidebarIssue ? (
         <aside className="flex w-[380px] lg:w-[440px] shrink-0 min-h-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96 shadow-md transition-all">
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3.5 py-3">

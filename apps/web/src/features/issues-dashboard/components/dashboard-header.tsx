@@ -90,7 +90,7 @@ export function DashboardHeader({
             >
               <span className="inline-flex items-center gap-1.5">
                 <CheckCircle2 size={14} />
-                <span>Completadas</span>
+                <span>Revisión y cierre</span>
               </span>
             </Button>
           </div>
