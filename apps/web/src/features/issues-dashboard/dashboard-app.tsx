@@ -52,10 +52,24 @@ import {
 import { DashboardBoard } from "@/features/issues-dashboard/dashboard-board";
 import { DashboardCompletedBoard } from "@/features/issues-dashboard/dashboard-completed-board";
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  CopyUrlButton,
   DesktopTitleBar,
+  IconActionButton,
   type SessionFormState,
   SessionScreen,
 } from "@/features/issues-dashboard/dashboard-chrome";
+import { IssueCard } from "@/features/issues-dashboard/issue-card";
 import {
   buildSyncPayload,
   filterIssuesBySearch,
@@ -249,6 +263,8 @@ export function DashboardApp() {
   const [snapshotFetching, setSnapshotFetching] = useState(false);
   const [snapshotError, setSnapshotError] = useState<Error | null>(null);
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
+  const [activeDragIssue, setActiveDragIssue] = useState<DashboardIssue | null>(null);
+  const [activeDragWidth, setActiveDragWidth] = useState<number | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [dirtyIssueKeys, setDirtyIssueKeys] = useState<Set<string>>(new Set());
   const [syncingIssueKeys, setSyncingIssueKeys] = useState<Set<string>>(
@@ -752,6 +768,26 @@ export function DashboardApp() {
     setSelectedIssueKey(issueKey);
     setIsSidebarCollapsed(false);
   }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor),
+  );
+
+  const handleDndDragStart = useCallback((event: DragStartEvent) => {
+    const issue = event.active.data.current?.issue as DashboardIssue | undefined;
+    if (issue) {
+      setActiveDragIssue(issue);
+      const initialWidth = event.active.rect.current.initial?.width;
+      if (initialWidth) {
+        setActiveDragWidth(initialWidth);
+      }
+    }
+  }, []);
   const minimizeDesktopWindow = useCallback(() => {
     void window.githubIssuesDesktop?.minimizeWindow?.();
   }, []);
@@ -1045,6 +1081,42 @@ export function DashboardApp() {
     );
     void persistSingleIssueMutation(issueKey);
   }
+
+  const handleDndDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveDragIssue(null);
+      setActiveDragWidth(null);
+
+      if (!over) return;
+
+      const issueKey = String(active.id);
+      const overData = over.data.current as
+        | { type?: string; priority?: PriorityValue | null; status?: LocalIssueStatus }
+        | undefined;
+
+      if (!overData) return;
+
+      if (overData.type === "Bucket") {
+        const targetIssue = issuesRef.current.find((i) => i.issueKey === issueKey);
+        if (
+          targetIssue &&
+          (targetIssue.localState.status === "completed" ||
+            targetIssue.localState.status === "in_review")
+        ) {
+          restoreIssue(issueKey);
+        }
+        setIssuePriority(issueKey, overData.priority ?? null);
+      } else if (overData.type === "StatusColumn") {
+        if (overData.status === "in_review") {
+          reviewIssue(issueKey);
+        } else if (overData.status === "completed") {
+          completeIssue(issueKey);
+        }
+      }
+    },
+    [],
+  );
 
   function updateIssueBlocks(
     issueKey: string,
@@ -1554,45 +1626,84 @@ export function DashboardApp() {
                   </div>
                 </div>
               ) : (
-                <DashboardBoard
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={pointerWithin}
+                  onDragStart={handleDndDragStart}
+                  onDragEnd={handleDndDragEnd}
+                >
+                  <DashboardBoard
+                    activeIssue={activeIssue}
+                    backlogIssues={backlogIssues}
+                    isSidebarCollapsed={isSidebarCollapsed}
+                    priorityBuckets={priorityBuckets}
+                    search={search}
+                    selectedIssueKey={selectedIssueKey}
+                    onCollapseSidebar={handleCollapseSidebar}
+                    onExpandSidebar={() => setIsSidebarCollapsed(false)}
+                    onCompleteIssue={completeIssue}
+                    onReviewIssue={reviewIssue}
+                    onIssueSelect={handleIssueSelect}
+                    onSearchChange={setSearch}
+                    onSetPriority={setIssuePriority}
+                    onTogglePin={toggleIssuePin}
+                    onUpdateBlocks={updateIssueBlocks}
+                  />
+                  <DragOverlay dropAnimation={null}>
+                    {activeDragIssue ? (
+                      <div
+                        style={activeDragWidth ? { width: `${activeDragWidth}px` } : undefined}
+                        className="opacity-95 shadow-2xl"
+                      >
+                        <IssueCard
+                          isDragging
+                          issue={activeDragIssue}
+                          selectedIssueKey={selectedIssueKey}
+                          onIssueSelect={() => {}}
+                        />
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </DndContext>
+              )
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={pointerWithin}
+                onDragStart={handleDndDragStart}
+                onDragEnd={handleDndDragEnd}
+              >
+                <DashboardCompletedBoard
                   activeIssue={activeIssue}
-                  backlogIssues={backlogIssues}
+                  reviewIssues={reviewIssues}
+                  completedIssues={completedIssues}
                   isSidebarCollapsed={isSidebarCollapsed}
-                  priorityBuckets={priorityBuckets}
-                  search={search}
                   selectedIssueKey={selectedIssueKey}
                   onCollapseSidebar={handleCollapseSidebar}
                   onExpandSidebar={() => setIsSidebarCollapsed(false)}
-                  onCompleteIssue={completeIssue}
-                  onReviewIssue={reviewIssue}
-                  onIssueDragEnd={handleIssueDragEnd}
-                  onIssueDragStart={handleIssueDragStart}
-                  onIssueDrop={handleIssueDrop}
                   onIssueSelect={handleIssueSelect}
-                  onSearchChange={setSearch}
-                  onSetPriority={setIssuePriority}
+                  onRestoreIssue={restoreIssue}
+                  onReviewIssue={reviewIssue}
+                  onCompleteIssue={completeIssue}
                   onTogglePin={toggleIssuePin}
                   onUpdateBlocks={updateIssueBlocks}
                 />
-              )
-            ) : (
-              <DashboardCompletedBoard
-                activeIssue={activeIssue}
-                reviewIssues={reviewIssues}
-                completedIssues={completedIssues}
-                isSidebarCollapsed={isSidebarCollapsed}
-                selectedIssueKey={selectedIssueKey}
-                onCollapseSidebar={handleCollapseSidebar}
-                onExpandSidebar={() => setIsSidebarCollapsed(false)}
-                onIssueSelect={handleIssueSelect}
-                onRestoreIssue={restoreIssue}
-                onReviewIssue={reviewIssue}
-                onCompleteIssue={completeIssue}
-                onTogglePin={toggleIssuePin}
-                onUpdateBlocks={updateIssueBlocks}
-                onIssueDragStart={handleIssueDragStart}
-                onIssueDragEnd={handleIssueDragEnd}
-              />
+                <DragOverlay dropAnimation={null}>
+                  {activeDragIssue ? (
+                    <div
+                      style={activeDragWidth ? { width: `${activeDragWidth}px` } : undefined}
+                      className="opacity-95 shadow-2xl"
+                    >
+                      <IssueCard
+                        isDragging
+                        issue={activeDragIssue}
+                        selectedIssueKey={selectedIssueKey}
+                        onIssueSelect={() => {}}
+                      />
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>

@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
     "@heroui/react": "3.0.1",
     "@tanstack/react-query": "5.96.1",
     "date-fns": "4.1.0",

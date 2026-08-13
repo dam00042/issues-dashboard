@@ -1,13 +1,11 @@
 "use client";
 
+import { useDroppable } from "@dnd-kit/core";
 import { Button, Tooltip } from "@heroui/react";
 import {
-  Check,
   CheckCheck,
-  Copy,
   ExternalLink,
   Eye,
-  NotebookText,
   PanelRightClose,
   PanelRightOpen,
   Pin,
@@ -15,24 +13,21 @@ import {
 } from "lucide-react";
 import {
   type CSSProperties,
-  type DragEvent,
-  memo,
   useEffect,
   useRef,
   useState,
 } from "react";
 
 import { CopyUrlButton, IconActionButton } from "@/features/issues-dashboard/dashboard-chrome";
-import {
-  formatAbsoluteTimestamp,
-  hasMeaningfulNotes,
-} from "@/features/issues-dashboard/dashboard-helpers";
+import { getRemoteStateDotClassName } from "@/features/issues-dashboard/dashboard-helpers";
+import { DraggableIssueCard } from "@/features/issues-dashboard/issue-card";
 import { NotesBlockEditor } from "@/features/issues-dashboard/notes-block-editor";
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
 
 // ─── Column definitions ────────────────────────────────────────────────────────
 
 interface ColumnDef {
+  id: string;
   color: string;
   emptyLabel: string;
   icon: typeof Eye;
@@ -41,6 +36,7 @@ interface ColumnDef {
 }
 
 const REVIEW_COLUMN: ColumnDef = {
+  id: "status-in_review",
   color: "#d97706",
   emptyLabel: "No hay issues en revisión todavía.",
   icon: Eye,
@@ -49,6 +45,7 @@ const REVIEW_COLUMN: ColumnDef = {
 };
 
 const COMPLETED_COLUMN: ColumnDef = {
+  id: "status-completed",
   color: "rgb(var(--app-open))",
   emptyLabel: "No hay issues completadas todavía.",
   icon: CheckCheck,
@@ -69,14 +66,6 @@ const WIDE_LAYOUT_BREAKPOINT = 1280;
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function getRemoteStateDotClassName(
-  remoteState: DashboardIssue["remoteState"],
-): string {
-  return remoteState === "open"
-    ? "bg-[rgb(var(--app-open))]"
-    : "bg-[rgb(var(--app-closed))]";
 }
 
 function getColumnHeaderStyle(column: ColumnDef): CSSProperties {
@@ -126,216 +115,38 @@ function ResizeHandle({
   );
 }
 
-// ─── IssueCard ─────────────────────────────────────────────────────────────────
-
-const IssueCard = memo(function IssueCard({
-  isDragging,
-  issue,
-  selectedIssueKey,
-  onIssueDragEnd,
-  onIssueDragStart,
-  onIssueSelect,
-  onRestoreIssue,
-  onTogglePin,
-}: {
-  isDragging: boolean;
-  issue: DashboardIssue;
-  selectedIssueKey: string | null;
-  onIssueDragEnd: () => void;
-  onIssueDragStart: (event: React.DragEvent<HTMLElement>, issueKey: string) => void;
-  onIssueSelect: (issueKey: string) => void;
-  onRestoreIssue: (issueKey: string) => void;
-  onTogglePin?: (issueKey: string) => void;
-}) {
-  const [isCopied, setIsCopied] = useState(false);
-  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const [tooltipText, setTooltipText] = useState("Copiar URL");
-
-  useEffect(() => {
-    if (isCopied) {
-      setTooltipText("¡Copiado!");
-      const timeout = setTimeout(() => {
-        setIsCopied(false);
-        setTimeout(() => setTooltipText("Copiar URL"), 300);
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isCopied]);
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
-        isDragging
-          ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
-          : ""
-      } ${
-        selectedIssueKey === issue.issueKey
-          ? "border-[rgb(var(--app-accent))]/65 bg-[rgb(var(--app-accent))]/8"
-          : "border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface))]/94"
-      }`}
-      draggable
-      onClick={() => onIssueSelect(issue.issueKey)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onIssueSelect(issue.issueKey); }}
-      onDragEnd={onIssueDragEnd}
-      onDragStart={(event) => onIssueDragStart(event, issue.issueKey)}
-    >
-      <div aria-hidden className="absolute right-2.5 top-2.5 flex h-2 items-center gap-1.5">
-        {issue.localState.isPinned ? (
-          <Pin size={11} className="text-[rgb(var(--app-muted))]" />
-        ) : null}
-        <span className={`shrink-0 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
-      </div>
-
-      <div
-        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onDragStart={(e) => e.stopPropagation()}
-      >
-        <Tooltip closeDelay={0} delay={80} isOpen={isCopied || isTooltipOpen} onOpenChange={setIsTooltipOpen}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => {
-                  void navigator.clipboard.writeText(issue.htmlUrl);
-                  setIsCopied(true);
-                }}
-              >
-                {isCopied ? <Check size={10} className="text-[rgb(var(--app-open))]" /> : <Copy size={10} />}
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>{tooltipText}</Tooltip.Content>
-        </Tooltip>
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink size={10} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
-        </Tooltip>
-
-        {onTogglePin ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className={`h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
-                  onPress={() => onTogglePin(issue.issueKey)}
-                >
-                  <Pin size={10} className={issue.localState.isPinned ? "fill-current" : ""} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>{issue.localState.isPinned ? "Desfijar" : "Fijar"}</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => onRestoreIssue(issue.issueKey)}
-              >
-                <RotateCcw size={10} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
-        </Tooltip>
-      </div>
-
-      <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
-        {issue.repository.name} #{issue.number}
-      </div>
-
-      <p className="mt-1 line-clamp-2 text-[0.84rem] font-medium leading-5 text-[rgb(var(--app-foreground))]">
-        {issue.title}
-      </p>
-
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-[rgb(var(--app-muted))]">
-        <span className="truncate">
-          {issue.localState.localCompletedAt
-            ? `Cerrada el ${formatAbsoluteTimestamp(issue.localState.localCompletedAt)}`
-            : ""}
-        </span>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {hasMeaningfulNotes(issue.localState.noteBlocks) ? (
-            <NotebookText size={11} />
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-});
-
 // ─── Column ────────────────────────────────────────────────────────────────────
 
 function BoardColumn({
   column,
-  draggedIssueKey,
   issues,
   selectedIssueKey,
-  onIssueDragEnd,
-  onIssueDragStart,
   onIssueSelect,
   onRestoreIssue,
   onTogglePin,
-  onIssueDrop,
 }: {
   column: ColumnDef;
-  draggedIssueKey: string | null;
   issues: DashboardIssue[];
   selectedIssueKey: string | null;
-  onIssueDragEnd: () => void;
-  onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
   onTogglePin?: (issueKey: string) => void;
-  onIssueDrop?: (event: DragEvent<HTMLElement>) => void;
 }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: column.id,
+    data: { type: "StatusColumn", status: column.id === "status-in_review" ? "in_review" : "completed" },
+  });
+
   const Icon = column.icon;
 
   return (
     <section
+      ref={setNodeRef}
       aria-label={column.label}
-      className="flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface-strong))]/88"
+      className={`flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 transition-colors ${
+        isOver ? "bg-[rgb(var(--app-accent))]/10 border-[rgb(var(--app-accent))]/50" : "bg-[rgb(var(--app-surface-strong))]/88"
+      }`}
       style={{ borderTop: `4px solid ${column.color}` }}
-      onDragOver={(e) => {
-        if (draggedIssueKey) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-        }
-      }}
-      onDrop={(e) => {
-        if (draggedIssueKey && onIssueDrop) {
-          onIssueDrop(e);
-        }
-      }}
     >
       <div
         className="flex items-center justify-between gap-2 px-3 py-2.5"
@@ -358,13 +169,10 @@ function BoardColumn({
             </div>
           ) : (
             issues.map((issue) => (
-              <IssueCard
+              <DraggableIssueCard
                 key={issue.issueKey}
-                isDragging={draggedIssueKey === issue.issueKey}
                 issue={issue}
                 selectedIssueKey={selectedIssueKey}
-                onIssueDragEnd={onIssueDragEnd}
-                onIssueDragStart={onIssueDragStart}
                 onIssueSelect={onIssueSelect}
                 onRestoreIssue={onRestoreIssue}
                 onTogglePin={onTogglePin}
@@ -396,8 +204,6 @@ interface DashboardCompletedBoardProps {
     issueKey: string,
     nextBlocks: DashboardIssue["localState"]["noteBlocks"],
   ) => void;
-  onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
-  onIssueDragEnd: () => void;
 }
 
 // ─── DragState ─────────────────────────────────────────────────────────────────
@@ -428,16 +234,12 @@ export function DashboardCompletedBoard({
   onCompleteIssue,
   onTogglePin,
   onUpdateBlocks,
-  onIssueDragStart,
-  onIssueDragEnd,
 }: DashboardCompletedBoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [draggedIssueKey, setDraggedIssueKey] = useState<string | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`)
-      .matches;
+    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`).matches;
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(50);
   const [threeColumnLeft, setThreeColumnLeft] = useState(40);
@@ -537,18 +339,6 @@ export function DashboardCompletedBoard({
     ? "grid h-full min-h-0"
     : "flex h-full min-h-0 flex-col gap-3";
 
-  const handleDragStart = (event: DragEvent<HTMLElement>, issueKey: string) => {
-    requestAnimationFrame(() => {
-      setDraggedIssueKey(issueKey);
-    });
-    onIssueDragStart(event, issueKey);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIssueKey(null);
-    onIssueDragEnd();
-  };
-
   return (
     <div
       ref={boardRef}
@@ -558,18 +348,11 @@ export function DashboardCompletedBoard({
       {/* ── En revisión column ── */}
       <BoardColumn
         column={REVIEW_COLUMN}
-        draggedIssueKey={draggedIssueKey}
         issues={reviewIssues}
         selectedIssueKey={selectedIssueKey}
-        onIssueDragEnd={handleDragEnd}
-        onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
         onTogglePin={onTogglePin}
-        onIssueDrop={() => {
-          if (draggedIssueKey) onReviewIssue(draggedIssueKey);
-          setDraggedIssueKey(null);
-        }}
       />
 
       {isWideLayout ? (
@@ -579,18 +362,11 @@ export function DashboardCompletedBoard({
       {/* ── Completadas column ── */}
       <BoardColumn
         column={COMPLETED_COLUMN}
-        draggedIssueKey={draggedIssueKey}
         issues={completedIssues}
         selectedIssueKey={selectedIssueKey}
-        onIssueDragEnd={handleDragEnd}
-        onIssueDragStart={handleDragStart}
         onIssueSelect={onIssueSelect}
         onRestoreIssue={onRestoreIssue}
         onTogglePin={onTogglePin}
-        onIssueDrop={() => {
-          if (draggedIssueKey) onCompleteIssue(draggedIssueKey);
-          setDraggedIssueKey(null);
-        }}
       />
 
       {hasSidebarIssue && isWideLayout ? (

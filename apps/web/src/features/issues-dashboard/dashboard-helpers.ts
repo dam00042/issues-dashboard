@@ -314,3 +314,22 @@ export function formatAbsoluteTimestamp(timestamp: string | null): string {
 
   return format(new Date(timestamp), "dd/MM/yyyy HH:mm", { locale: es });
 }
+
+export function formatRelativeTimestamp(timestamp: string | null): string {
+  if (!timestamp) {
+    return "sin actividad reciente";
+  }
+
+  return new Intl.RelativeTimeFormat("es", { numeric: "auto" }).format(
+    -Math.max(1, Math.round((Date.now() - Date.parse(timestamp)) / 86_400_000)),
+    "day",
+  );
+}
+
+export function getRemoteStateDotClassName(
+  remoteState: DashboardIssue["remoteState"],
+): string {
+  return remoteState === "open"
+    ? "bg-[rgb(var(--app-open))]"
+    : "bg-[rgb(var(--app-closed))]";
+}

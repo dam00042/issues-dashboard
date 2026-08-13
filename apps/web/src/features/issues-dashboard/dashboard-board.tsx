@@ -1,23 +1,22 @@
 "use client";
 
+import { useDroppable } from "@dnd-kit/core";
 import { Button, Input, Tooltip } from "@heroui/react";
 import {
-  Check,
+  AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
   CheckCheck,
-  Copy,
   ExternalLink,
   Eye,
   List,
-  NotebookText,
+  MinusCircle,
   PanelRightClose,
   PanelRightOpen,
   Pin,
-  RotateCcw,
 } from "lucide-react";
 import {
   type CSSProperties,
-  type DragEvent,
-  memo,
   useEffect,
   useRef,
   useState,
@@ -25,9 +24,10 @@ import {
 
 import { CopyUrlButton, IconActionButton } from "@/features/issues-dashboard/dashboard-chrome";
 import {
-  hasMeaningfulNotes,
+  getRemoteStateDotClassName,
   PRIORITY_DEFINITIONS,
 } from "@/features/issues-dashboard/dashboard-helpers";
+import { DraggableIssueCard } from "@/features/issues-dashboard/issue-card";
 import { NotesBlockEditor } from "@/features/issues-dashboard/notes-block-editor";
 import type {
   DashboardIssue,
@@ -50,12 +50,6 @@ interface DashboardBoardProps {
   onExpandSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
   onReviewIssue: (issueKey: string) => void;
-  onIssueDragEnd: () => void;
-  onIssueDragStart: (event: DragEvent<HTMLElement>, issueKey: string) => void;
-  onIssueDrop: (
-    event: DragEvent<HTMLElement>,
-    priority: PriorityValue | null,
-  ) => void;
   onIssueSelect: (issueKey: string) => void;
   onSearchChange: (nextValue: string) => void;
   onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
@@ -84,25 +78,6 @@ const THREE_COLUMN_MAX_LEFT = 28;
 const THREE_COLUMN_MIN_CENTER = 38;
 const THREE_COLUMN_MIN_RIGHT = 24;
 const WIDE_LAYOUT_BREAKPOINT = 1280;
-
-function formatRelativeTimestamp(timestamp: string | null): string {
-  if (!timestamp) {
-    return "sin actividad reciente";
-  }
-
-  return new Intl.RelativeTimeFormat("es", { numeric: "auto" }).format(
-    -Math.max(1, Math.round((Date.now() - Date.parse(timestamp)) / 86_400_000)),
-    "day",
-  );
-}
-
-function getRemoteStateDotClassName(
-  remoteState: DashboardIssue["remoteState"],
-): string {
-  return remoteState === "open"
-    ? "bg-[rgb(var(--app-open))]"
-    : "bg-[rgb(var(--app-closed))]";
-}
 
 function getPriorityButtonClassName(
   definition: PriorityDefinition,
@@ -176,211 +151,59 @@ function ResizeHandle({
   );
 }
 
-const IssueCard = memo(function IssueCard({
-  isDragging,
-  issue,
-  onIssueDragEnd,
-  selectedIssueKey,
-  onIssueDragStart,
-  onIssueSelect,
-  onCompleteIssue,
-  onReviewIssue,
-  onRestoreIssue,
-  onTogglePin,
-}: {
-  isDragging: boolean;
-  issue: DashboardIssue;
-  onIssueDragEnd: () => void;
-  selectedIssueKey: string | null;
-  onIssueDragStart: (event: React.DragEvent<HTMLElement>, issueKey: string) => void;
-  onIssueSelect: (issueKey: string) => void;
-  onCompleteIssue?: (issueKey: string) => void;
-  onReviewIssue?: (issueKey: string) => void;
-  onRestoreIssue?: (issueKey: string) => void;
-  onTogglePin?: (issueKey: string) => void;
-}) {
-  const [isCopied, setIsCopied] = useState(false);
-  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const [tooltipText, setTooltipText] = useState("Copiar URL");
-
-  useEffect(() => {
-    if (isCopied) {
-      setTooltipText("¡Copiado!");
-      const timeout = setTimeout(() => {
-        setIsCopied(false);
-        setTimeout(() => setTooltipText("Copiar URL"), 300);
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isCopied]);
+function DroppableBacklog({ children, className }: { children: React.ReactNode; className?: string }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: "bucket-null",
+    data: { type: "Bucket", priority: null },
+  });
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
-        isDragging
-          ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
-          : ""
-      } ${
-        selectedIssueKey === issue.issueKey
-          ? "border-[rgb(var(--app-accent))]/65 bg-[rgb(var(--app-accent))]/8"
-          : "border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface))]/94"
-      }`}
-      draggable
-      onClick={() => onIssueSelect(issue.issueKey)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onIssueSelect(issue.issueKey); }}
-      onDragEnd={onIssueDragEnd}
-      onDragStart={(event) => onIssueDragStart(event, issue.issueKey)}
+    <section
+      ref={setNodeRef}
+      aria-label="Backlog de issues"
+      className={`${className || ""} transition-colors ${isOver ? "bg-[rgb(var(--app-accent))]/5" : ""}`}
     >
-      <div aria-hidden className="absolute right-2.5 top-2.5 flex h-2 items-center gap-1.5">
-        {issue.localState.isPinned ? (
-          <Pin size={11} className="text-[rgb(var(--app-muted))]" />
-        ) : null}
-        <span className={`shrink-0 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
-      </div>
-
-      <div
-        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onDragStart={(e) => e.stopPropagation()}
-      >
-        <Tooltip closeDelay={0} delay={80} isOpen={isCopied || isTooltipOpen} onOpenChange={setIsTooltipOpen}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => {
-                  void navigator.clipboard.writeText(issue.htmlUrl);
-                  setIsCopied(true);
-                }}
-              >
-                {isCopied ? <Check size={10} className="text-[rgb(var(--app-open))]" /> : <Copy size={10} />}
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>{tooltipText}</Tooltip.Content>
-        </Tooltip>
-
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink size={10} />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
-        </Tooltip>
-
-        {onTogglePin ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className={`h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
-                  onPress={() => onTogglePin(issue.issueKey)}
-                >
-                  <Pin size={10} className={issue.localState.isPinned ? "fill-current" : ""} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>{issue.localState.isPinned ? "Desfijar" : "Fijar"}</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onReviewIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[#d97706]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[#d97706] shadow-sm hover:bg-[#d97706]/15"
-                  onPress={() => onReviewIssue(issue.issueKey)}
-                >
-                  <Eye size={10} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Mandar a revisión</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onCompleteIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-open))]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-open))] shadow-sm hover:bg-[rgb(var(--app-open))]/15"
-                  onPress={() => onCompleteIssue(issue.issueKey)}
-                >
-                  <CheckCheck size={10} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Completar localmente</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onRestoreIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                  onPress={() => onRestoreIssue(issue.issueKey)}
-                >
-                  <RotateCcw size={10} />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-      </div>
-
-      <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
-        {issue.repository.name} #{issue.number}
-      </div>
-
-      <p className="mt-1 line-clamp-2 text-[0.84rem] font-medium leading-5 text-[rgb(var(--app-foreground))]">
-        {issue.title}
-      </p>
-
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] text-[rgb(var(--app-muted))]">
-        <span className="truncate">
-          Actualizada {formatRelativeTimestamp(issue.updatedAt)}
-        </span>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {hasMeaningfulNotes(issue.localState.noteBlocks) ? (
-            <NotebookText size={11} />
-          ) : null}
-        </div>
-      </div>
-    </div>
+      {children}
+    </section>
   );
-});
+}
+
+function DroppablePriorityBucket({ bucket, children }: { bucket: PriorityBucket; children: React.ReactNode }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `bucket-${bucket.value}`,
+    data: { type: "Bucket", priority: bucket.value },
+  });
+
+  const BucketIcon = bucket.icon;
+
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={`Prioridad ${bucket.label}`}
+      className={`flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 transition-colors ${
+        isOver ? "bg-[rgb(var(--app-accent))]/10 border-[rgb(var(--app-accent))]/50" : "bg-[rgb(var(--app-surface-strong))]/88"
+      }`}
+      style={{ borderTop: `4px solid ${bucket.color}` }}
+    >
+      <div
+        className={`flex items-center justify-between gap-2 px-3 py-2.5 ${bucket.headerClassName}`}
+        style={getQuadrantHeaderStyle(bucket)}
+      >
+        <div className="inline-flex items-center gap-2">
+          <BucketIcon size={16} />
+          <span className="text-sm font-semibold">{bucket.label}</span>
+        </div>
+        <span className="rounded bg-[rgb(var(--app-surface))]/95 px-1.5 py-0.5 text-[11px] font-semibold text-[rgb(var(--app-muted))]">
+          {bucket.issues.length}
+        </span>
+      </div>
+
+      <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-2 py-2">
+        <div className="space-y-2 px-1 pb-2">{children}</div>
+      </div>
+    </section>
+  );
+}
 
 export function DashboardBoard({
   activeIssue,
@@ -393,9 +216,6 @@ export function DashboardBoard({
   onExpandSidebar,
   onCompleteIssue,
   onReviewIssue,
-  onIssueDragEnd,
-  onIssueDragStart,
-  onIssueDrop,
   onIssueSelect,
   onSearchChange,
   onSetPriority,
@@ -404,14 +224,12 @@ export function DashboardBoard({
 }: DashboardBoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [draggedIssueKey, setDraggedIssueKey] = useState<string | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(() => {
     if (typeof window === "undefined") {
       return false;
     }
 
-    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`)
-      .matches;
+    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`).matches;
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(24);
   const [threeColumnLeft, setThreeColumnLeft] = useState(20);
@@ -537,18 +355,7 @@ export function DashboardBoard({
       className={boardClassName}
       style={isWideLayout ? { gridTemplateColumns: wideLayoutColumns } : {}}
     >
-      <section
-        aria-label="Backlog de issues"
-        className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96"
-        onDragOver={(event) => {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-        }}
-        onDrop={(event) => {
-          onIssueDrop(event, null);
-          setDraggedIssueKey(null);
-        }}
-      >
+      <DroppableBacklog className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
         <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
@@ -578,20 +385,9 @@ export function DashboardBoard({
               </div>
             ) : (
               backlogIssues.map((issue) => (
-                <IssueCard
-                  isDragging={draggedIssueKey === issue.issueKey}
+                <DraggableIssueCard
                   key={issue.issueKey}
                   issue={issue}
-                  onIssueDragEnd={() => {
-                    setDraggedIssueKey(null);
-                    onIssueDragEnd();
-                  }}
-                  onIssueDragStart={(event, draggedIssueKey) => {
-                    requestAnimationFrame(() => {
-                      setDraggedIssueKey(draggedIssueKey);
-                    });
-                    onIssueDragStart(event, draggedIssueKey);
-                  }}
                   onIssueSelect={onIssueSelect}
                   selectedIssueKey={selectedIssueKey}
                   onCompleteIssue={onCompleteIssue}
@@ -601,7 +397,7 @@ export function DashboardBoard({
             )}
           </div>
         </div>
-      </section>
+      </DroppableBacklog>
 
       {isWideLayout ? (
         <ResizeHandle
@@ -625,74 +421,27 @@ export function DashboardBoard({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-2 md:grid-rows-2">
-          {priorityBuckets.map((bucket) => {
-            const BucketIcon = bucket.icon;
-
-            return (
-              <section
-                key={bucket.value}
-                aria-label={`Prioridad ${bucket.label}`}
-                className="flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface-strong))]/88"
-                style={{ borderTop: `4px solid ${bucket.color}` }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event) => {
-                  onIssueDrop(event, bucket.value);
-                  setDraggedIssueKey(null);
-                }}
-              >
-                <div
-                  className={`flex items-center justify-between gap-2 px-3 py-2.5 ${bucket.headerClassName}`}
-                  style={getQuadrantHeaderStyle(bucket)}
-                >
-                  <div className="inline-flex items-center gap-2">
-                    <BucketIcon size={16} />
-                    <span className="text-sm font-semibold">
-                      {bucket.label}
-                    </span>
-                  </div>
-                  <span className="rounded bg-[rgb(var(--app-surface))]/95 px-1.5 py-0.5 text-[11px] font-semibold text-[rgb(var(--app-muted))]">
-                    {bucket.issues.length}
-                  </span>
+          {priorityBuckets.map((bucket) => (
+            <DroppablePriorityBucket key={bucket.value} bucket={bucket}>
+              {bucket.issues.length === 0 ? (
+                <div className="rounded-[1rem] border border-dashed border-[rgb(var(--app-border))]/60 px-4 py-8 text-center text-sm text-[rgb(var(--app-muted))]">
+                  Arrastra aquí una issue priorizada.
                 </div>
-
-                <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-2 py-2">
-                  <div className="space-y-2 px-1 pb-2">
-                    {bucket.issues.length === 0 ? (
-                      <div className="rounded-[1rem] border border-dashed border-[rgb(var(--app-border))]/60 px-4 py-8 text-center text-sm text-[rgb(var(--app-muted))]">
-                        Arrastra aquí una issue priorizada.
-                      </div>
-                    ) : (
-                      bucket.issues.map((issue) => (
-                        <IssueCard
-                          isDragging={draggedIssueKey === issue.issueKey}
-                          key={issue.issueKey}
-                          issue={issue}
-                          onIssueDragEnd={() => {
-                            setDraggedIssueKey(null);
-                            onIssueDragEnd();
-                          }}
-                          onIssueDragStart={(event, draggedIssueKey) => {
-                            requestAnimationFrame(() => {
-                              setDraggedIssueKey(draggedIssueKey);
-                            });
-                            onIssueDragStart(event, draggedIssueKey);
-                          }}
-                          onIssueSelect={onIssueSelect}
-                          selectedIssueKey={selectedIssueKey}
-                          onCompleteIssue={onCompleteIssue}
-                          onReviewIssue={onReviewIssue}
-                          onTogglePin={onTogglePin}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </section>
-            );
-          })}
+              ) : (
+                bucket.issues.map((issue) => (
+                  <DraggableIssueCard
+                    key={issue.issueKey}
+                    issue={issue}
+                    onIssueSelect={onIssueSelect}
+                    selectedIssueKey={selectedIssueKey}
+                    onCompleteIssue={onCompleteIssue}
+                    onReviewIssue={onReviewIssue}
+                    onTogglePin={onTogglePin}
+                  />
+                ))
+              )}
+            </DroppablePriorityBucket>
+          ))}
         </div>
       </section>
 

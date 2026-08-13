@@ -4,6 +4,7 @@ import { Button, Input, Modal, Tooltip } from "@heroui/react";
 import { Check, Copy, Loader2, Maximize2, Minus, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CopyButton } from "@/features/issues-dashboard/copy-button";
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
 
 export interface SessionFormState {
@@ -230,6 +231,7 @@ export interface IconActionButtonProps {
   isOpen?: boolean;
   label: string;
   onPress?: () => void;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 export function IconActionButton({
@@ -239,11 +241,17 @@ export function IconActionButton({
   isOpen: forcedIsOpen,
   label,
   onPress,
+  onOpenChange: customOnOpenChange,
 }: IconActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    setIsOpen(nextOpen);
+    customOnOpenChange?.(nextOpen);
+  };
+
   return (
-    <Tooltip closeDelay={0} delay={120} isOpen={forcedIsOpen || isOpen} onOpenChange={setIsOpen}>
+    <Tooltip closeDelay={0} delay={120} isOpen={forcedIsOpen || isOpen} onOpenChange={handleOpenChange}>
       <Tooltip.Trigger>
         <div className="inline-flex">
           <Button
@@ -269,30 +277,13 @@ export function IconActionButton({
 }
 
 export function CopyUrlButton({ url }: { url: string }) {
-  const [isCopied, setIsCopied] = useState(false);
-  const [tooltipText, setTooltipText] = useState("Copiar URL");
-
-  useEffect(() => {
-    if (isCopied) {
-      setTooltipText("¡Copiado!");
-      const timeout = setTimeout(() => {
-        setIsCopied(false);
-        setTimeout(() => setTooltipText("Copiar URL"), 300);
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isCopied]);
-
   return (
-    <IconActionButton
-      isOpen={isCopied ? true : undefined}
-      label={tooltipText}
-      onPress={() => {
-        void navigator.clipboard.writeText(url);
-        setIsCopied(true);
-      }}
-    >
-      {isCopied ? <Check size={14} className="text-[rgb(var(--app-open))]" /> : <Copy size={14} />}
-    </IconActionButton>
+    <CopyButton
+      url={url}
+      iconSize={14}
+      persistsOnCopy
+      tooltipDelay={120}
+      className="h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] shadow-none transition hover:border-[rgb(var(--app-accent))]/35 hover:text-[rgb(var(--app-foreground))]"
+    />
   );
 }
