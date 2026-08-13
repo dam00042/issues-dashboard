@@ -20,18 +20,7 @@ import {
   Spinner,
 } from "@heroui/react";
 import {
-  CheckCircle2,
   Download,
-  LayoutGrid,
-  Loader2,
-  LogOut,
-  Monitor,
-  MoonStar,
-  RefreshCw,
-  Settings2,
-  SunMedium,
-  Upload,
-  UserRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -49,6 +38,7 @@ import type {
   DashboardIssue,
   DashboardSection,
   PriorityValue,
+  ThemeDefinition,
 } from "@/features/issues-dashboard/types";
 import {
   filterIssuesBySearch,
@@ -58,6 +48,12 @@ import {
   THEME_DEFINITIONS,
 } from "@/features/issues-dashboard/utils/dashboard-helpers";
 import type { ThemeMode } from "@/types/desktop";
+
+const THEMES: ThemeDefinition[] = [
+  { value: "system", label: "Sistema" },
+  { value: "light", label: "Claro" },
+  { value: "dark", label: "Oscuro" },
+];
 
 const STORAGE_KEYS = {
   closedWindow: "issues-dashboard:closed-window",
@@ -95,12 +91,6 @@ function formatClosedWindowLabel(closedWindow: ClosedWindowOption): string {
   if (closedWindow === "all") return "Cerradas: todas";
   if (closedWindow === "1") return "Cerradas: 1 mes";
   return `Cerradas: ${closedWindow} meses`;
-}
-
-function getThemeIcon(theme: ThemeMode, resolvedTheme?: string) {
-  if (theme === "system") return <Monitor size={16} />;
-  if (resolvedTheme === "dark") return <MoonStar size={16} />;
-  return <SunMedium size={16} />;
 }
 
 export function DashboardApp() {
@@ -296,11 +286,23 @@ export function DashboardApp() {
     }
   };
 
-  const syncStatusLabel = isSyncingState
-    ? "Sincronizando..."
-    : dirtyIssueKeys.size > 0
-    ? `${dirtyIssueKeys.size} cambio${dirtyIssueKeys.size > 1 ? "s" : ""} pendiente${dirtyIssueKeys.size > 1 ? "s" : ""}`
-    : "Sincronizado";
+  const snapshotConnectivityNotice =
+    snapshotError && issues.length > 0
+      ? "Sin conexión de red. Mostrando datos locales guardados; puedes seguir trabajando en local."
+      : "";
+
+  const topbarStatusMessage =
+    syncError ||
+    snapshotConnectivityNotice ||
+    "";
+  const topbarHasError = Boolean(syncError);
+  const topbarHasWarning = !topbarHasError && Boolean(snapshotConnectivityNotice);
+  const topbarShowSpinner = false;
+
+  function cycleTheme() {
+    if (resolvedTheme === "dark") setTheme("light");
+    else setTheme("dark");
+  }
 
   if (!backendReady) {
     return (
@@ -354,29 +356,25 @@ export function DashboardApp() {
         </div>
       ) : null}
 
-      <DashboardHeader
-        activeCount={activeIssues.length}
-        completedCount={completedIssues.length + reviewIssues.length}
-        dirtyCount={dirtyIssueKeys.size}
-        isFetching={isFetchingSnapshot}
-        isSyncing={isSyncingState}
-        section={section}
-        username={sessionStatus.username}
-        onClearSession={() => void handleClearSession()}
-        onEditSession={() => setIsEditingSession(true)}
-        onRefresh={() => void fetchSnapshotData(closedWindow)}
-        onSectionChange={setSection}
-      />
-
-      {snapshotError || syncError ? (
-        <div className="shrink-0 px-4 py-1">
-          <div className="rounded-[0.9rem] border border-[rgb(var(--app-danger))]/35 bg-[rgb(var(--app-danger))]/10 px-3 py-2 text-xs text-[rgb(var(--app-danger))]">
-            {snapshotError || syncError}
-          </div>
-        </div>
-      ) : null}
-
-      <main className="min-h-0 flex-1 overflow-hidden p-4 pt-1">
+      <main className="min-h-0 flex-1 overflow-hidden p-4 pt-3">
+        <div className="flex h-full flex-col gap-2">
+          <DashboardHeader
+            isFetching={isFetchingSnapshot}
+            section={section}
+            topbarStatusMessage={topbarStatusMessage}
+            topbarHasError={topbarHasError}
+            topbarHasWarning={topbarHasWarning}
+            topbarShowSpinner={topbarShowSpinner}
+            themeDefinitions={THEMES}
+            username={sessionStatus.username}
+            onClearSession={() => void handleClearSession()}
+            onCycleTheme={cycleTheme}
+            onEditSession={() => setIsEditingSession(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onRefresh={() => void fetchSnapshotData(closedWindow)}
+            onSectionChange={setSection}
+          />
+          <div className="min-h-0 flex-1">
         {section === "board" ? (
           <DndContext
             sensors={sensors}
@@ -451,6 +449,8 @@ export function DashboardApp() {
             </DragOverlay>
           </DndContext>
         )}
+          </div>
+        </div>
       </main>
     </div>
   );
