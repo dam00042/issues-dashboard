@@ -2,13 +2,13 @@
 
 import { Button, Dropdown, Input } from "@heroui/react";
 import {
+  Building2,
   CheckCircle2,
-  Database,
   FolderGit2,
   FolderMinus,
   RotateCcw,
   Search,
-  Server,
+  TrainFront,
   X,
 } from "lucide-react";
 
@@ -24,8 +24,8 @@ export interface DashboardFilterBarProps {
 }
 
 function getProjectIcon(value: string) {
-  if (value === "edi") return <Database size={14} className="text-[#0070f3]" />;
-  if (value === "infra") return <Server size={14} className="text-[#d97706]" />;
+  if (value === "edi") return <Building2 size={14} className="text-[#0070f3]" />;
+  if (value === "infra") return <TrainFront size={14} className="text-[#d97706]" />;
   if (value === "none") return <FolderMinus size={14} className="text-[rgb(var(--app-muted))]" />;
   return <FolderGit2 size={14} className="text-[rgb(var(--app-muted))]" />;
 }
@@ -108,13 +108,13 @@ export function DashboardFilterBar({
                 </Dropdown.Item>
                 <Dropdown.Item id="edi" onPress={() => onProjectChange("edi")}>
                   <div className="flex items-center gap-2">
-                    <Database size={14} className="text-[#0070f3]" />
+                    <Building2 size={14} className="text-[#0070f3]" />
                     <span>EDI</span>
                   </div>
                 </Dropdown.Item>
                 <Dropdown.Item id="infra" onPress={() => onProjectChange("infra")}>
                   <div className="flex items-center gap-2">
-                    <Server size={14} className="text-[#d97706]" />
+                    <TrainFront size={14} className="text-[#d97706]" />
                     <span>INFRA</span>
                   </div>
                 </Dropdown.Item>
