@@ -14,6 +14,7 @@ import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
 import { NotesBlockEditor } from "@/features/issues-dashboard/components/notes-block-editor";
+import { ResizeHandle } from "@/features/issues-dashboard/components/resize-handle";
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
 import {
   formatAbsoluteTimestamp,
@@ -97,6 +98,7 @@ export function CompletedBoard({
   reviewIssues,
   selectedIssueKey,
   onCollapseSidebar,
+  onExpandSidebar,
   onIssueSelect,
   onRestoreIssue,
   onReviewIssue,
@@ -169,8 +171,18 @@ export function CompletedBoard({
         </DroppableBucket>
       </div>
 
-      {/* Detail Sidebar - Resizes beside the 50/50 main grid when opened */}
-      {isSidebarVisible && sidebarIssue ? (
+      {/* Shared ResizeHandle with floating collapse/expand button */}
+      {sidebarIssue ? (
+        <ResizeHandle
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={
+            isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar
+          }
+        />
+      ) : null}
+
+      {/* Detail Sidebar */}
+      {!isSidebarCollapsed && sidebarIssue ? (
         <aside className="flex w-[380px] lg:w-[440px] shrink-0 min-h-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96 shadow-md transition-all">
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3.5 py-3">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
@@ -211,14 +223,6 @@ export function CompletedBoard({
                 >
                   <RotateCcw size={14} />
                 </IconActionButton>
-                <button
-                  type="button"
-                  aria-label="Cerrar panel lateral"
-                  className="flex h-8 w-8 items-center justify-center rounded-[0.8rem] text-[rgb(var(--app-muted))] transition hover:bg-[rgb(var(--app-surface-strong))] hover:text-[rgb(var(--app-foreground))]"
-                  onClick={onCollapseSidebar}
-                >
-                  <PanelRightClose size={16} />
-                </button>
               </div>
             </div>
 
