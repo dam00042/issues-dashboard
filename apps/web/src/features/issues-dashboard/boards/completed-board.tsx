@@ -8,7 +8,7 @@ import {
   PanelRightClose,
   RotateCcw,
 } from "lucide-react";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
@@ -108,6 +108,39 @@ export function CompletedBoard({
   const sidebarIssue = activeIssue;
   const isSidebarVisible = Boolean(sidebarIssue && !isSidebarCollapsed);
 
+  const [sidebarWidth, setSidebarWidth] = useState(420);
+  const [dragState, setDragState] = useState<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragState) {
+      document.body.style.userSelect = "";
+      return;
+    }
+
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const delta = dragState.startX - event.clientX;
+      const nextWidth = Math.min(750, Math.max(280, dragState.startWidth + delta));
+      setSidebarWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      setDragState(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [dragState]);
+
   return (
     <div className="flex h-full min-h-0 min-w-0 gap-3">
       {/* 50/50 Quadrants Area - "En revisión" and "Completadas localmente" split available space 50/50 */}
@@ -171,19 +204,32 @@ export function CompletedBoard({
         </DroppableBucket>
       </div>
 
-      {/* Shared ResizeHandle with floating collapse/expand button */}
+      {/* Shared ResizeHandle with floating collapse/expand button and drag resizer */}
       {sidebarIssue ? (
         <ResizeHandle
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={
             isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar
           }
+          onPointerDown={
+            isSidebarCollapsed
+              ? undefined
+              : (clientX) => {
+                  setDragState({
+                    startX: clientX,
+                    startWidth: sidebarWidth,
+                  });
+                }
+          }
         />
       ) : null}
 
       {/* Detail Sidebar */}
       {!isSidebarCollapsed && sidebarIssue ? (
-        <aside className="flex w-[380px] lg:w-[440px] shrink-0 min-h-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96 shadow-md transition-all">
+        <aside
+          style={{ width: `${sidebarWidth}px` }}
+          className="shrink-0 min-h-0 flex flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96 shadow-md transition-all"
+        >
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3.5 py-3">
             <div className="flex items-center gap-2 text-[11px] text-[rgb(var(--app-muted))]">
               <div className="flex min-w-0 flex-1 items-center gap-2">
