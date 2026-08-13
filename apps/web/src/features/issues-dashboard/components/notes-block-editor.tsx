@@ -16,15 +16,15 @@ import {
   useState,
 } from "react";
 
-import {
-  createNoteLine,
-  normalizeNoteBlocks,
-} from "@/features/issues-dashboard/dashboard-helpers";
 import type {
   NoteBlock,
   NoteBlockItem,
   NoteBlockKind,
 } from "@/features/issues-dashboard/types";
+import {
+  createNoteLine,
+  normalizeNoteBlocks,
+} from "@/features/issues-dashboard/utils/dashboard-helpers";
 
 interface NotesBlockEditorProps {
   blocks: NoteBlock[];

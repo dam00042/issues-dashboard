@@ -1,26 +1,24 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
 import { useDraggable } from "@dnd-kit/core";
+import { Button, Tooltip } from "@heroui/react";
 import {
-  Check,
   CheckCheck,
-  Copy,
   ExternalLink,
   Eye,
   NotebookText,
   Pin,
   RotateCcw,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 
-import { CopyButton } from "@/features/issues-dashboard/copy-button";
+import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
+import type { DashboardIssue } from "@/features/issues-dashboard/types";
 import {
   formatRelativeTimestamp,
   getRemoteStateDotClassName,
   hasMeaningfulNotes,
-} from "@/features/issues-dashboard/dashboard-helpers";
-import type { DashboardIssue } from "@/features/issues-dashboard/types";
+} from "@/features/issues-dashboard/utils/dashboard-helpers";
 
 export interface IssueCardProps {
   isDragging?: boolean;

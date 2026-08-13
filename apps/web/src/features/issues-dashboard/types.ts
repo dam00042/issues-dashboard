@@ -6,7 +6,7 @@ export type PriorityValue = 1 | 2 | 3 | 4;
 export type NoteBlockKind = "text" | "checklist" | "ordered";
 export type RemoteIssueState = "open" | "closed";
 export type ClosedWindowOption = "all" | `${number}`;
-export type DashboardSection = "board" | "review";
+export type DashboardSection = "board" | "completed";
 export type LocalIssueStatus = "active" | "in_review" | "completed";
 
 export interface NoteBlockItem {

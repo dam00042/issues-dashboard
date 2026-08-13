@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { DashboardIssue, IssueLocalState, NoteBlock } from "@/features/issues-dashboard/types";
 import {
   buildSyncPayload,
   defaultNoteBlocks,
@@ -7,7 +8,6 @@ import {
   normalizeNoteBlocks,
   sortIssuesByPinnedAndUpdated,
 } from "./dashboard-helpers";
-import type { DashboardIssue, IssueLocalState, NoteBlock } from "./types";
 
 function createLocalState(
   overrides: Partial<IssueLocalState> = {},
