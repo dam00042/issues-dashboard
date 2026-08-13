@@ -15,6 +15,7 @@ import {
   Button,
   Chip,
   Dropdown,
+  Input,
   Modal,
   ScrollShadow,
   Spinner,
@@ -102,6 +103,7 @@ export function DashboardApp() {
   const [closedWindowDraft, setClosedWindowDraft] = useState(
     DEFAULT_CLOSED_WINDOW,
   );
+  const [closedWindowDraftError, setClosedWindowDraftError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
@@ -112,6 +114,26 @@ export function DashboardApp() {
   const [activeDragWidth, setActiveDragWidth] = useState<number | null>(null);
 
   const deferredSearch = useDeferredValue(search);
+
+  function applyClosedWindow(closedWindowValue: ClosedWindowOption) {
+    setClosedWindow(closedWindowValue);
+    setClosedWindowDraft(closedWindowValue);
+    setClosedWindowDraftError("");
+    writeStoredPreference(STORAGE_KEYS.closedWindow, closedWindowValue);
+    void fetchSnapshotData(closedWindowValue);
+  }
+
+  function applyClosedWindowDraft() {
+    const parsedMonths = Number.parseInt(closedWindowDraft.trim(), 10);
+
+    if (Number.isNaN(parsedMonths) || parsedMonths <= 0) {
+      setClosedWindowDraftError("Indica un número entero positivo.");
+      return;
+    }
+
+    applyClosedWindow(String(parsedMonths) as ClosedWindowOption);
+    setSettingsOpen(false);
+  }
 
   const {
     handleClose,
@@ -452,6 +474,104 @@ export function DashboardApp() {
           </div>
         </div>
       </main>
+
+      <Modal>
+        <Modal.Backdrop
+          isDismissable
+          isOpen={settingsOpen}
+          variant="blur"
+          onOpenChange={setSettingsOpen}
+        >
+          <Modal.Container size="md">
+            <Modal.Dialog className="border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))] text-[rgb(var(--app-foreground))]">
+              <Modal.CloseTrigger />
+              <Modal.Header>
+                <Modal.Heading>Ajustes de issues cerradas</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
+                <div className="space-y-4 px-1">
+                  <p className="text-sm text-[rgb(var(--app-muted))]">
+                    Elige si quieres ver todas las cerradas o limitar la vista
+                    por un número manual de meses.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={closedWindow === "all" ? "primary" : "outline"}
+                      className={
+                        closedWindow === "all"
+                          ? "bg-[#0070f3] text-white"
+                          : ""
+                      }
+                      onPress={() => {
+                        applyClosedWindow("all");
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Mostrar todas
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={closedWindow === "1" ? "primary" : "outline"}
+                      className={
+                        closedWindow === "1"
+                          ? "bg-[#0070f3] text-white"
+                          : ""
+                      }
+                      onPress={() => {
+                        applyClosedWindow("1");
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      Cerradas: 1 mes
+                    </Button>
+                    <Chip
+                      className="border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/90 text-[rgb(var(--app-muted))]"
+                      variant="secondary"
+                    >
+                      {formatClosedWindowLabel(closedWindow)}
+                    </Chip>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-[rgb(var(--app-foreground))]">
+                      Límite manual en meses
+                    </p>
+                    <Input
+                      aria-label="Número de meses para issues cerradas"
+                      placeholder="6"
+                      type="number"
+                      className="w-full"
+                      value={closedWindowDraft}
+                      onChange={(event) => {
+                        setClosedWindowDraft(event.target.value);
+                        setClosedWindowDraftError("");
+                      }}
+                    />
+                    <p className="text-xs text-[rgb(var(--app-muted))]">
+                      Introduce cualquier entero positivo. Ejemplo: 2, 9 o 18.
+                    </p>
+                    {closedWindowDraftError ? (
+                      <p className="text-xs font-medium text-[rgb(var(--app-danger))]">
+                        {closedWindowDraftError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button slot="close" variant="outline" onPress={() => setSettingsOpen(false)}>
+                  Cerrar
+                </Button>
+                <Button variant="primary" className="bg-[#0070f3] text-white" onPress={applyClosedWindowDraft}>
+                  Aplicar meses
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }

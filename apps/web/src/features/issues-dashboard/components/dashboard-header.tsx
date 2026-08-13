@@ -10,6 +10,7 @@ import {
   MoonStar,
   RefreshCw,
   Settings2,
+  SlidersHorizontal,
   SunMedium,
   UserRound,
 } from "lucide-react";
@@ -122,7 +123,7 @@ export function DashboardHeader({
             variant="outline"
             onPress={onOpenSettings}
           >
-            <Settings2 size={16} />
+            <SlidersHorizontal size={16} />
           </Button>
           <Button
             isIconOnly
