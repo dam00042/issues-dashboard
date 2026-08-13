@@ -108,7 +108,6 @@ export function DashboardApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState("all");
-  const [selectedPriority, setSelectedPriority] = useState("all");
   const [selectedState, setSelectedState] = useState("all");
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -228,16 +227,7 @@ export function DashboardApp() {
         }
       }
 
-      // 3. Priority Filter ("all" | "1" | "2" | "3" | "4" | "none")
-      if (selectedPriority !== "all") {
-        if (selectedPriority === "none") {
-          if (issue.localState.priority !== null) return false;
-        } else {
-          if (issue.localState.priority !== Number(selectedPriority)) return false;
-        }
-      }
-
-      // 4. State Filter ("all" | "open" | "in_review" | "closed")
+      // 3. GitHub / App State Filter ("all" | "open" | "in_review" | "closed")
       if (selectedState !== "all") {
         if (selectedState === "open") {
           if (issue.localState.status !== "active" && issue.remoteState !== "open")
@@ -255,7 +245,7 @@ export function DashboardApp() {
 
       return true;
     });
-  }, [issues, deferredSearch, selectedProject, selectedPriority, selectedState]);
+  }, [issues, deferredSearch, selectedProject, selectedState]);
 
   const activeIssues = useMemo(
     () => filteredIssues.filter((issue) => issue.localState.status === "active"),
@@ -429,16 +419,12 @@ export function DashboardApp() {
   }
 
   const hasActiveFilters = Boolean(
-    search.trim() ||
-      selectedProject !== "all" ||
-      selectedPriority !== "all" ||
-      selectedState !== "all",
+    search.trim() || selectedProject !== "all" || selectedState !== "all",
   );
 
   const handleClearFilters = () => {
     setSearch("");
     setSelectedProject("all");
-    setSelectedPriority("all");
     setSelectedState("all");
   };
 
@@ -476,11 +462,9 @@ export function DashboardApp() {
           <DashboardFilterBar
             hasActiveFilters={hasActiveFilters}
             search={search}
-            selectedPriority={selectedPriority}
             selectedProject={selectedProject}
             selectedState={selectedState}
             onClearFilters={handleClearFilters}
-            onPriorityChange={setSelectedPriority}
             onProjectChange={setSelectedProject}
             onStateChange={setSelectedState}
             onSearchChange={setSearch}

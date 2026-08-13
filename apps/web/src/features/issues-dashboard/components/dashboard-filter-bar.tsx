@@ -2,7 +2,6 @@
 
 import { Button, Dropdown, Input } from "@heroui/react";
 import {
-  AlertCircle,
   CheckCircle2,
   Database,
   FolderGit2,
@@ -16,11 +15,9 @@ import {
 export interface DashboardFilterBarProps {
   hasActiveFilters: boolean;
   search: string;
-  selectedPriority: string;
   selectedProject: string;
   selectedState: string;
   onClearFilters: () => void;
-  onPriorityChange: (priority: string) => void;
   onProjectChange: (project: string) => void;
   onStateChange: (state: string) => void;
   onSearchChange: (search: string) => void;
@@ -38,24 +35,6 @@ function getProjectLabel(value: string): string {
   if (value === "edi") return "EDI";
   if (value === "infra") return "INFRA";
   if (value === "none") return "No project";
-  return value;
-}
-
-function getPriorityIcon(value: string) {
-  if (value === "1") return <AlertCircle size={14} className="text-[#ef4444]" />;
-  if (value === "2") return <AlertCircle size={14} className="text-[#f97316]" />;
-  if (value === "3") return <AlertCircle size={14} className="text-[#eab308]" />;
-  if (value === "4") return <AlertCircle size={14} className="text-[#3b82f6]" />;
-  return <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />;
-}
-
-function getPriorityLabel(value: string): string {
-  if (value === "all") return "Todas las prioridades";
-  if (value === "1") return "Urgente (P1)";
-  if (value === "2") return "Alta (P2)";
-  if (value === "3") return "Media (P3)";
-  if (value === "4") return "Baja (P4)";
-  if (value === "none") return "Sin prioridad";
   return value;
 }
 
@@ -77,11 +56,9 @@ function getStateLabel(value: string): string {
 export function DashboardFilterBar({
   hasActiveFilters,
   search,
-  selectedPriority,
   selectedProject,
   selectedState,
   onClearFilters,
-  onPriorityChange,
   onProjectChange,
   onStateChange,
   onSearchChange,
@@ -145,56 +122,6 @@ export function DashboardFilterBar({
                   <div className="flex items-center gap-2">
                     <FolderMinus size={14} className="text-[rgb(var(--app-muted))]" />
                     <span>No project</span>
-                  </div>
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown.Popover>
-          </Dropdown>
-
-          {/* Priority Dropdown */}
-          <Dropdown>
-            <Dropdown.Trigger className="button button--sm button--outline rounded-[0.8rem] px-2.5">
-              <span className="flex items-center gap-1.5 text-xs font-medium">
-                {getPriorityIcon(selectedPriority)}
-                <span>{getPriorityLabel(selectedPriority)}</span>
-              </span>
-            </Dropdown.Trigger>
-            <Dropdown.Popover>
-              <Dropdown.Menu aria-label="Filtrar por prioridad">
-                <Dropdown.Item id="all" onPress={() => onPriorityChange("all")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />
-                    <span>Todas las prioridades</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="1" onPress={() => onPriorityChange("1")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[#ef4444]" />
-                    <span>Urgente (P1)</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="2" onPress={() => onPriorityChange("2")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[#f97316]" />
-                    <span>Alta (P2)</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="3" onPress={() => onPriorityChange("3")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[#eab308]" />
-                    <span>Media (P3)</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="4" onPress={() => onPriorityChange("4")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[#3b82f6]" />
-                    <span>Baja (P4)</span>
-                  </div>
-                </Dropdown.Item>
-                <Dropdown.Item id="none" onPress={() => onPriorityChange("none")}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-[rgb(var(--app-muted))]" />
-                    <span>Sin prioridad</span>
                   </div>
                 </Dropdown.Item>
               </Dropdown.Menu>
