@@ -38,6 +38,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { ActiveBoard } from "@/features/issues-dashboard/boards/active-board";
 import { CompletedBoard } from "@/features/issues-dashboard/boards/completed-board";
+import { DashboardHeader } from "@/features/issues-dashboard/components/dashboard-header";
 import { DesktopTitleBar } from "@/features/issues-dashboard/components/desktop-title-bar";
 import { IssueCard } from "@/features/issues-dashboard/components/issue-card";
 import { SessionScreen } from "@/features/issues-dashboard/components/session-screen";
@@ -353,123 +354,19 @@ export function DashboardApp() {
         </div>
       ) : null}
 
-      <header className="shrink-0 px-4 pt-3 pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.1rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/94 px-4 py-2.5 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[0.7rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-accent))]/12 text-[rgb(var(--app-accent-strong))]">
-                <LayoutGrid size={18} />
-              </div>
-              <div>
-                <h1 className="text-sm font-semibold leading-none text-[rgb(var(--app-foreground))]">
-                  Issues Dashboard
-                </h1>
-                <p className="mt-1 text-[11px] text-[rgb(var(--app-muted))]">
-                  @{sessionStatus.username}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-4 w-px bg-[rgb(var(--app-border))]/60" />
-
-            <nav className="flex items-center gap-1 rounded-[0.8rem] border border-[rgb(var(--app-border))]/55 bg-[rgb(var(--app-surface-strong))]/60 p-1">
-              <Button
-                size="sm"
-                variant={section === "board" ? "primary" : "ghost"}
-                className="h-7 text-xs"
-                onPress={() => setSection("board")}
-              >
-                Tablero ({activeIssues.length})
-              </Button>
-              <Button
-                size="sm"
-                variant={section === "completed" ? "primary" : "ghost"}
-                className="h-7 text-xs"
-                onPress={() => setSection("completed")}
-              >
-                Completadas ({completedIssues.length + reviewIssues.length})
-              </Button>
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Chip
-              size="sm"
-              className="border border-[rgb(var(--app-border))]/60 bg-[rgb(var(--app-surface-strong))]/80 text-xs"
-            >
-              <div className="flex items-center gap-1.5">
-                {isSyncingState ? (
-                  <Loader2 size={12} className="animate-spin text-[rgb(var(--app-accent))]" />
-                ) : dirtyIssueKeys.size > 0 ? (
-                  <Upload size={12} className="text-[#d97706]" />
-                ) : (
-                  <CheckCircle2 size={12} className="text-[rgb(var(--app-open))]" />
-                )}
-                <span>{syncStatusLabel}</span>
-              </div>
-            </Chip>
-
-            <Button
-              isIconOnly
-              size="sm"
-              variant="outline"
-              aria-label="Actualizar datos de GitHub"
-              className="h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/90"
-              onPress={() => void fetchSnapshotData(closedWindow)}
-            >
-              <RefreshCw
-                size={14}
-                className={isFetchingSnapshot ? "animate-spin" : ""}
-              />
-            </Button>
-
-            <Dropdown>
-              <Dropdown.Trigger className="button button--icon-only button--sm button--outline h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/90 text-[rgb(var(--app-foreground))]">
-                <Settings2 size={14} />
-              </Dropdown.Trigger>
-              <Dropdown.Popover>
-                <Dropdown.Menu aria-label="Opciones de configuración">
-                  <Dropdown.Section aria-label="Tema">
-                    {THEME_DEFINITIONS.map((def) => (
-                      <Dropdown.Item
-                        key={def.value}
-                        id={def.value}
-                        onPress={() => setTheme(def.value)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {getThemeIcon(def.value as ThemeMode, resolvedTheme)}
-                          <span>{def.label}</span>
-                        </div>
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Section>
-                  <Dropdown.Section aria-label="Sesión">
-                    <Dropdown.Item
-                      id="edit-session"
-                      onPress={() => setIsEditingSession(true)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <UserRound size={14} />
-                        <span>Editar credenciales</span>
-                      </div>
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      id="logout"
-                      className="text-[rgb(var(--app-danger))]"
-                      onPress={() => void handleClearSession()}
-                    >
-                      <div className="flex items-center gap-2">
-                        <LogOut size={14} />
-                        <span>Cerrar sesión</span>
-                      </div>
-                    </Dropdown.Item>
-                  </Dropdown.Section>
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader
+        activeCount={activeIssues.length}
+        completedCount={completedIssues.length + reviewIssues.length}
+        dirtyCount={dirtyIssueKeys.size}
+        isFetching={isFetchingSnapshot}
+        isSyncing={isSyncingState}
+        section={section}
+        username={sessionStatus.username}
+        onClearSession={() => void handleClearSession()}
+        onEditSession={() => setIsEditingSession(true)}
+        onRefresh={() => void fetchSnapshotData(closedWindow)}
+        onSectionChange={setSection}
+      />
 
       {snapshotError || syncError ? (
         <div className="shrink-0 px-4 py-1">
