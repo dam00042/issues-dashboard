@@ -1,26 +1,14 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { Button, Input, Tooltip } from "@heroui/react";
-import {
-  CheckCheck,
-  ExternalLink,
-  Eye,
-  List,
-  PanelRightClose,
-  PanelRightOpen,
-  Pin,
-} from "lucide-react";
-import {
-  type CSSProperties,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { CheckCheck, ExternalLink, Eye, List, Pin } from "lucide-react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
+import { IssuePrioritySelector } from "@/features/issues-dashboard/components/issue-priority-selector";
+import { LinkedPullRequests } from "@/features/issues-dashboard/components/linked-pull-requests";
 import { NotesBlockEditor } from "@/features/issues-dashboard/components/notes-block-editor";
 import { ResizeHandle } from "@/features/issues-dashboard/components/resize-handle";
 import type {
@@ -28,10 +16,7 @@ import type {
   PriorityDefinition,
   PriorityValue,
 } from "@/features/issues-dashboard/types";
-import {
-  getRemoteStateDotClassName,
-  PRIORITY_DEFINITIONS,
-} from "@/features/issues-dashboard/utils/dashboard-helpers";
+import { getRemoteStateDotClassName } from "@/features/issues-dashboard/utils/dashboard-helpers";
 
 interface PriorityBucket extends PriorityDefinition {
   issues: DashboardIssue[];
@@ -42,14 +27,12 @@ export interface ActiveBoardProps {
   backlogIssues: DashboardIssue[];
   isSidebarCollapsed: boolean;
   priorityBuckets: PriorityBucket[];
-  search: string;
   selectedIssueKey: string | null;
   onCollapseSidebar: () => void;
   onExpandSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
   onReviewIssue: (issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
-  onSearchChange: (nextValue: string) => void;
   onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
   onTogglePin: (issueKey: string) => void;
   onUpdateBlocks: (
@@ -77,29 +60,6 @@ const THREE_COLUMN_MIN_CENTER = 38;
 const THREE_COLUMN_MIN_RIGHT = 24;
 const WIDE_LAYOUT_BREAKPOINT = 1280;
 
-function getPriorityButtonClassName(
-  definition: PriorityDefinition,
-  isActive: boolean,
-): string {
-  if (isActive) {
-    return definition.buttonClassName;
-  }
-
-  if (definition.value === 4) {
-    return "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[#f85149]/40 hover:bg-[rgba(248,81,73,0.1)] hover:text-[#f85149]";
-  }
-
-  if (definition.value === 3) {
-    return "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[#d97706]/40 hover:bg-[rgba(217,119,6,0.1)] hover:text-[#d97706]";
-  }
-
-  if (definition.value === 2) {
-    return "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[#2563eb]/40 hover:bg-[rgba(37,99,235,0.1)] hover:text-[#2563eb]";
-  }
-
-  return "border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[#6b7280]/40 hover:bg-[rgba(107,114,128,0.1)] hover:text-[#9ca3af]";
-}
-
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -112,9 +72,13 @@ function getQuadrantHeaderStyle(definition: PriorityDefinition): CSSProperties {
   };
 }
 
-
-
-function DroppableBacklog({ children, className }: { children: React.ReactNode; className?: string }) {
+function DroppableBacklog({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   const { isOver, setNodeRef } = useDroppable({
     id: "bucket-null",
     data: { type: "Bucket", priority: null },
@@ -131,7 +95,13 @@ function DroppableBacklog({ children, className }: { children: React.ReactNode; 
   );
 }
 
-function DroppablePriorityBucket({ bucket, children }: { bucket: PriorityBucket; children: React.ReactNode }) {
+function DroppablePriorityBucket({
+  bucket,
+  children,
+}: {
+  bucket: PriorityBucket;
+  children: React.ReactNode;
+}) {
   const { isOver, setNodeRef } = useDroppable({
     id: `bucket-${bucket.value}`,
     data: { type: "Bucket", priority: bucket.value },
@@ -144,7 +114,9 @@ function DroppablePriorityBucket({ bucket, children }: { bucket: PriorityBucket;
       ref={setNodeRef}
       aria-label={`Prioridad ${bucket.label}`}
       className={`flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 transition-colors ${
-        isOver ? "bg-[rgb(var(--app-accent))]/10 border-[rgb(var(--app-accent))]/50" : "bg-[rgb(var(--app-surface-strong))]/88"
+        isOver
+          ? "bg-[rgb(var(--app-accent))]/10 border-[rgb(var(--app-accent))]/50"
+          : "bg-[rgb(var(--app-surface-strong))]/88"
       }`}
       style={{ borderTop: `4px solid ${bucket.color}` }}
     >
@@ -173,14 +145,12 @@ export function ActiveBoard({
   backlogIssues,
   isSidebarCollapsed,
   priorityBuckets,
-  search,
   selectedIssueKey,
   onCollapseSidebar,
   onExpandSidebar,
   onCompleteIssue,
   onReviewIssue,
   onIssueSelect,
-  onSearchChange,
   onSetPriority,
   onTogglePin,
   onUpdateBlocks,
@@ -192,7 +162,8 @@ export function ActiveBoard({
       return false;
     }
 
-    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`).matches;
+    return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`)
+      .matches;
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(24);
   const [threeColumnLeft, setThreeColumnLeft] = useState(20);
@@ -299,14 +270,14 @@ export function ActiveBoard({
         threeColumnRight / 100,
       )})`}`
     : hasSidebarIssue
-    ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
-        twoColumnLeft / 100,
-      )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(
-        SPLITTER_WIDTH_PX,
-      )}px 0px`
-    : `${`calc((100% - ${String(SPLITTER_WIDTH_PX)}px) * ${String(
-        twoColumnLeft / 100,
-      )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
+      ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
+          twoColumnLeft / 100,
+        )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(
+          SPLITTER_WIDTH_PX,
+        )}px 0px`
+      : `${`calc((100% - ${String(SPLITTER_WIDTH_PX)}px) * ${String(
+          twoColumnLeft / 100,
+        )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr)`;
 
   const boardClassName = isWideLayout
     ? "grid h-full min-h-0"
@@ -343,9 +314,9 @@ export function ActiveBoard({
               backlogIssues.map((issue) => (
                 <DraggableIssueCard
                   key={issue.issueKey}
+                  isSelected={selectedIssueKey === issue.issueKey}
                   issue={issue}
                   onIssueSelect={onIssueSelect}
-                  selectedIssueKey={selectedIssueKey}
                   onCompleteIssue={onCompleteIssue}
                   onReviewIssue={onReviewIssue}
                 />
@@ -387,9 +358,9 @@ export function ActiveBoard({
                 bucket.issues.map((issue) => (
                   <DraggableIssueCard
                     key={issue.issueKey}
+                    isSelected={selectedIssueKey === issue.issueKey}
                     issue={issue}
                     onIssueSelect={onIssueSelect}
-                    selectedIssueKey={selectedIssueKey}
                     onCompleteIssue={onCompleteIssue}
                     onReviewIssue={onReviewIssue}
                     onTogglePin={onTogglePin}
@@ -404,15 +375,20 @@ export function ActiveBoard({
       {hasSidebarIssue && isWideLayout ? (
         <ResizeHandle
           isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar}
-          onPointerDown={isSidebarCollapsed ? undefined : (clientX) =>
-            setDragState({
-              mode: "right-split",
-              startX: clientX,
-              threeColumnLeft,
-              threeColumnRight,
-              twoColumnLeft,
-            })
+          onToggleCollapse={
+            isSidebarCollapsed ? onExpandSidebar : onCollapseSidebar
+          }
+          onPointerDown={
+            isSidebarCollapsed
+              ? undefined
+              : (clientX) =>
+                  setDragState({
+                    mode: "right-split",
+                    startX: clientX,
+                    threeColumnLeft,
+                    threeColumnRight,
+                    twoColumnLeft,
+                  })
           }
         />
       ) : null}
@@ -433,7 +409,13 @@ export function ActiveBoard({
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1">
-                <CopyButton url={sidebarIssue.htmlUrl} iconSize={14} persistsOnCopy tooltipDelay={120} className="h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] shadow-none transition hover:border-[rgb(var(--app-accent))]/35 hover:text-[rgb(var(--app-foreground))]" />
+                <CopyButton
+                  url={sidebarIssue.htmlUrl}
+                  iconSize={14}
+                  persistsOnCopy
+                  tooltipDelay={120}
+                  className="h-8 w-8 rounded-[0.8rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/92 text-[rgb(var(--app-muted))] shadow-none transition hover:border-[rgb(var(--app-accent))]/35 hover:text-[rgb(var(--app-foreground))]"
+                />
                 <IconActionButton
                   label="Abrir en GitHub"
                   onPress={() =>
@@ -479,85 +461,16 @@ export function ActiveBoard({
             </h2>
           </div>
 
-          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2">
-            <div className="flex items-center gap-3">
-              <p className="min-w-[5.4rem] text-left text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-[rgb(var(--app-muted))]">
-                Prioridad
-              </p>
+          <LinkedPullRequests issue={sidebarIssue} />
 
-              <div className="grid w-full min-w-0 flex-1 grid-cols-5 gap-2">
-                {PRIORITY_DEFINITIONS.map((definition) => {
-                  const PriorityIcon = definition.icon;
-
-                  return (
-                    <Tooltip key={definition.value} closeDelay={0} delay={80}>
-                      <Tooltip.Trigger>
-                        <div className="inline-flex w-full">
-                          <Button
-                            isIconOnly
-                            aria-label={`Asignar prioridad ${definition.label}`}
-                            size="sm"
-                            variant="outline"
-                            className={`h-[1.95rem] w-full rounded-[0.82rem] ${getPriorityButtonClassName(
-                              definition,
-                              sidebarIssue.localState.priority ===
-                                definition.value,
-                            )}`}
-                            onPress={() =>
-                              onSetPriority(
-                                sidebarIssue.issueKey,
-                                definition.value,
-                              )
-                            }
-                          >
-                            <PriorityIcon size={14} />
-                          </Button>
-                        </div>
-                      </Tooltip.Trigger>
-                      <Tooltip.Content
-                        showArrow
-                        className={definition.tooltipClassName}
-                      >
-                        {definition.label}
-                      </Tooltip.Content>
-                    </Tooltip>
-                  );
-                })}
-
-                <Tooltip closeDelay={0} delay={80}>
-                  <Tooltip.Trigger>
-                    <div className="inline-flex w-full">
-                      <Button
-                        isIconOnly
-                        aria-label="Mover a backlog"
-                        size="sm"
-                        variant="outline"
-                        className={
-                          sidebarIssue.localState.priority === null
-                            ? "h-[1.95rem] w-full rounded-[0.82rem] border-[rgb(var(--app-accent))]/50 bg-[rgb(var(--app-accent))]/12 text-[rgb(var(--app-accent-strong))]"
-                            : "h-[1.95rem] w-full rounded-[0.82rem] border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/90 text-[rgb(var(--app-muted))] hover:border-[rgb(var(--app-accent))]/40 hover:bg-[rgb(var(--app-accent))]/8 hover:text-[rgb(var(--app-accent-strong))]"
-                        }
-                        onPress={() =>
-                          onSetPriority(sidebarIssue.issueKey, null)
-                        }
-                      >
-                        <List size={14} />
-                      </Button>
-                    </div>
-                  </Tooltip.Trigger>
-                  <Tooltip.Content
-                    showArrow
-                    className="border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))] text-[rgb(var(--app-foreground))]"
-                  >
-                    Backlog
-                  </Tooltip.Content>
-                </Tooltip>
-              </div>
-            </div>
-          </div>
+          <IssuePrioritySelector
+            issue={sidebarIssue}
+            onSetPriority={onSetPriority}
+          />
 
           <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3 py-2.5">
             <NotesBlockEditor
+              key={sidebarIssue.issueKey}
               blocks={sidebarIssue.localState.noteBlocks}
               onBlocksChange={(nextBlocks) =>
                 onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)

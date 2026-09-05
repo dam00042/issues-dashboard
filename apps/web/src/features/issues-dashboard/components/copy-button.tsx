@@ -14,7 +14,7 @@ export interface CopyButtonProps {
 
 export function CopyButton({
   url,
-  className = "h-5 w-5 min-w-5 rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]",
+  className = "h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]",
   iconSize = 10,
   persistsOnCopy = false,
   tooltipDelay = 80,
@@ -81,9 +81,16 @@ export function CopyButton({
             onPress={handleCopy}
           >
             {isCopied ? (
-              <Check size={iconSize} className="text-[rgb(var(--app-open))]" />
+              <Check
+                size={iconSize}
+                style={{ height: iconSize, width: iconSize }}
+                className="text-[rgb(var(--app-open))]"
+              />
             ) : (
-              <Copy size={iconSize} />
+              <Copy
+                size={iconSize}
+                style={{ height: iconSize, width: iconSize }}
+              />
             )}
           </Button>
         </div>

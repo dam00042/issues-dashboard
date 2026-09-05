@@ -170,10 +170,10 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
         setIssues(nextSnapshot.issues.map(normalizeIssue));
       } catch (error) {
         if (isAuthenticationApiError(error)) {
-          setSessionStatus({
+          setSessionStatus((previousStatus) => ({
             configured: false,
-            username: sessionForm.username,
-          });
+            username: previousStatus?.username ?? null,
+          }));
           setIsEditingSession(false);
           setSessionError(
             "La sesión actual expiró o las credenciales no son válidas.",
@@ -199,7 +199,7 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
         }
       }
     },
-    [sessionForm.username],
+    [],
   );
 
   const flushDirtyIssueStates = useCallback(async () => {

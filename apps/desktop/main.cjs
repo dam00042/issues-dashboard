@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -404,20 +405,27 @@ async function stopBackendProcess() {
   });
 }
 
+function probeHttpUrl(targetUrl) {
+  return new Promise((resolve) => {
+    const request = http.get(targetUrl, (response) => {
+      response.resume();
+      resolve((response.statusCode ?? 500) < 500);
+    });
+
+    request.on("error", () => resolve(false));
+    request.setTimeout(3_000, () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
+}
+
 async function waitForUrl(targetUrl, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(targetUrl, {
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // Keep polling until the timeout is reached.
+    if (await probeHttpUrl(targetUrl)) {
+      return;
     }
 
     await new Promise((resolve) => {

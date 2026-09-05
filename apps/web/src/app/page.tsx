@@ -1,5 +1,5 @@
-import { DashboardPageClient } from "./dashboard-page-client";
+import { DashboardApp } from "@/features/issues-dashboard/dashboard-app";
 
 export default function Home() {
-  return <DashboardPageClient />;
+  return <DashboardApp />;
 }

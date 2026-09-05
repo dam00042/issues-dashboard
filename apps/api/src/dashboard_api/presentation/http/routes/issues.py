@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from dashboard_api.application.issues.service import (
     GitHubAuthenticationError,
 )
+from dashboard_api.domain.issues.models import ClosedIssueWindow
 from dashboard_api.presentation.http.schemas import (
     IssueCompletionUpdatePayload,
     IssueNotesUpdatePayload,
@@ -44,27 +46,31 @@ def _get_command_service(request: Request) -> IssueLocalStateCommandService:
     return cast("IssueLocalStateCommandService", request.app.state.command_service)
 
 
-def _parse_closed_window_months(raw_value: str) -> int | None:
-    """Parse the closed-window query into months or the all sentinel."""
+def _parse_closed_window(raw_value: str) -> ClosedIssueWindow | None:
+    """Parse an amount plus days, months or years, keeping legacy months."""
     normalized_value = raw_value.strip().lower()
     if normalized_value == "all":
         return None
 
-    try:
-        parsed_months = int(normalized_value)
-    except ValueError as error:
+    match = re.fullmatch(r"(\d+)([dmy])?", normalized_value)
+    if match is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="closed_window debe ser 'all' o un entero positivo.",
-        ) from error
-
-    if parsed_months <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="closed_window debe ser 'all' o un entero positivo.",
+            detail="closed_window debe ser 'all' o un entero positivo con d, m o y.",
         )
 
-    return parsed_months
+    amount = int(match.group(1))
+    if amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="closed_window debe ser 'all' o un entero positivo con d, m o y.",
+        )
+
+    unit = {"d": "days", "m": "months", "y": "years"}.get(
+        match.group(2) or "m",
+        "months",
+    )
+    return ClosedIssueWindow(amount=amount, unit=unit)
 
 
 @router.get("/snapshot", response_model=SnapshotResponse)
@@ -73,13 +79,13 @@ def get_snapshot(
     closed_window: Annotated[
         str,
         Query(),
-    ] = "6",
+    ] = "6m",
 ) -> SnapshotResponse:
     """Return a merged dashboard snapshot for the selected closed window."""
     snapshot_service = _get_snapshot_service(request)
-    closed_window_months = _parse_closed_window_months(closed_window)
+    parsed_closed_window = _parse_closed_window(closed_window)
     try:
-        snapshot = snapshot_service.build_snapshot(closed_window_months)
+        snapshot = snapshot_service.build_snapshot(parsed_closed_window)
     except GitHubAuthenticationError as error:
         raise HTTPException(
             status_code=error.status_code,

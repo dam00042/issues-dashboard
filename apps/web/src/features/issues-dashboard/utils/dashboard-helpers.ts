@@ -6,13 +6,24 @@ import {
   ArrowUpCircle,
   MinusCircle,
 } from "lucide-react";
-
+import {
+  normalizeProjectPriorityValue,
+  PROJECT_PRIORITY_DEFINITIONS,
+} from "@/features/issues-dashboard/project-priorities";
+import {
+  compareProjectStatusValues,
+  getProjectStatusLabel,
+  normalizeProjectStatusValue,
+} from "@/features/issues-dashboard/project-statuses";
 import type {
   DashboardIssue,
   NoteBlock,
   NoteBlockItem,
   NoteBlockKind,
   PriorityDefinition,
+  ProjectFilterDefinition,
+  RemoteIssueStateFilter,
+  SelectedProjectFields,
   SyncStateItem,
   ThemeDefinition,
 } from "@/features/issues-dashboard/types";
@@ -21,6 +32,11 @@ const CONTEXT_BLOCK_ID = "context";
 const NEXT_ACTION_BLOCK_ID = "next-action";
 const CONTEXT_ITEM_ID = "context-item-1";
 const NEXT_ACTION_ITEM_ID = "next-action-item-1";
+const PROJECT_FILTER_FIELDS = [
+  { key: "status", label: "Status de Projects" },
+  { key: "sprint", label: "Sprint" },
+  { key: "priority", label: "Priority" },
+] as const;
 
 type LegacyNoteBlock = Partial<NoteBlock> & {
   kind?: NoteBlockKind;
@@ -191,7 +207,7 @@ export function defaultNoteBlocks(): NoteBlock[] {
     },
     {
       id: NEXT_ACTION_BLOCK_ID,
-      items: [{ ...createNoteItem(), id: NEXT_ACTION_ITEM_ID }],
+      items: [{ ...createNoteItem("checklist"), id: NEXT_ACTION_ITEM_ID }],
       label: "Siguientes pasos",
     },
   ];
@@ -213,7 +229,15 @@ export function normalizeNoteBlocks(
   for (const [index, rawBlock] of (blocks ?? []).entries()) {
     const block = rawBlock as LegacyNoteBlock;
     const sectionIndex = resolveNoteSectionIndex(block, index);
-    const normalizedItems = normalizeNoteItems(block);
+    const normalizedItems = normalizeNoteItems(block).map(
+      (item): NoteBlockItem =>
+        sectionIndex === 1 &&
+        item.id === NEXT_ACTION_ITEM_ID &&
+        item.kind === "text" &&
+        !item.text.trim()
+          ? { ...item, kind: "checklist" }
+          : item,
+    );
 
     if (normalizedItems.length === 0) {
       continue;
@@ -287,6 +311,121 @@ export function filterIssuesBySearch(
       `${issue.title} ${issue.repository.fullName} ${issue.repository.name} ${issue.number}`.toLowerCase();
     return haystack.includes(normalizedSearch);
   });
+}
+
+export function issueMatchesRemoteState(
+  issue: DashboardIssue,
+  selectedState: RemoteIssueStateFilter,
+): boolean {
+  return selectedState === "all" || issue.remoteState === selectedState;
+}
+
+export function normalizeProjectFieldKey(fieldName: string): string {
+  return fieldName.trim().toLocaleLowerCase("es");
+}
+
+function normalizeProjectFieldValue(fieldKey: string, value: string): string {
+  if (fieldKey === "status") return normalizeProjectStatusValue(value);
+  if (fieldKey === "priority") return normalizeProjectPriorityValue(value);
+  if (fieldKey === "sprint") {
+    return value
+      .replace(/\s*\(current\)\s*$/i, "")
+      .trim()
+      .toLocaleLowerCase("es");
+  }
+  return value.trim().toLocaleLowerCase("es");
+}
+
+function getProjectFieldDisplayValue(fieldKey: string, value: string): string {
+  if (fieldKey !== "status") return value.trim();
+  return getProjectStatusLabel(value);
+}
+
+export function buildProjectFilterDefinitions(
+  issues: DashboardIssue[],
+): ProjectFilterDefinition[] {
+  const optionsByField = new Map<string, Map<string, string>>();
+
+  for (const issue of issues) {
+    for (const projectItem of issue.projectItems ?? []) {
+      for (const field of projectItem.fields) {
+        const key = normalizeProjectFieldKey(field.fieldName);
+        if (
+          !PROJECT_FILTER_FIELDS.some((definition) => definition.key === key) ||
+          !field.value
+        ) {
+          continue;
+        }
+        const options = optionsByField.get(key) ?? new Map<string, string>();
+        const normalizedValue = normalizeProjectFieldValue(key, field.value);
+        if (!options.has(normalizedValue)) {
+          options.set(
+            normalizedValue,
+            getProjectFieldDisplayValue(key, field.value),
+          );
+        }
+        optionsByField.set(key, options);
+      }
+    }
+  }
+
+  return PROJECT_FILTER_FIELDS.flatMap(
+    (definition): ProjectFilterDefinition[] => {
+      const options = optionsByField.get(definition.key);
+      if (!options?.size) return [];
+      if (definition.key === "priority") {
+        return [
+          {
+            ...definition,
+            options: PROJECT_PRIORITY_DEFINITIONS.map(({ label }) => label),
+          },
+        ];
+      }
+
+      if (definition.key === "sprint") {
+        const sortedSprints = [...options.values()].sort((left, right) =>
+          right.localeCompare(left, "es", {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        );
+        return [
+          {
+            ...definition,
+            options: sortedSprints.map((sprint, index) =>
+              index === 0 ? `${sprint} (Current)` : sprint,
+            ),
+          },
+        ];
+      }
+
+      return [
+        {
+          ...definition,
+          options: [...options.values()].sort(compareProjectStatusValues),
+        },
+      ];
+    },
+  );
+}
+
+export function issueMatchesProjectFilters(
+  issue: DashboardIssue,
+  selectedFields: SelectedProjectFields,
+): boolean {
+  return Object.entries(selectedFields).every(
+    ([selectedKey, selectedValue]) => {
+      if (!selectedValue || selectedValue === "all") return true;
+      return (issue.projectItems ?? []).some((projectItem) =>
+        projectItem.fields.some(
+          (field) =>
+            normalizeProjectFieldKey(field.fieldName) === selectedKey &&
+            normalizeProjectFieldValue(selectedKey, field.value) ===
+              normalizeProjectFieldValue(selectedKey, selectedValue),
+        ),
+      );
+    },
+  );
 }
 
 export function buildSyncPayload(

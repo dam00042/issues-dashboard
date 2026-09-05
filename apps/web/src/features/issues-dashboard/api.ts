@@ -2,6 +2,8 @@ import type {
   ClosedWindowOption,
   LocalSessionPayload,
   LocalSessionStatus,
+  PullRequestDashboardResponse,
+  PullRequestWindowOption,
   SnapshotResponse,
   SyncStateItem,
 } from "@/features/issues-dashboard/types";
@@ -40,6 +42,10 @@ function getApiBaseUrl(): string {
   }
 
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010";
+}
+
+function getDesktopBridge() {
+  return typeof window === "undefined" ? undefined : window.githubIssuesDesktop;
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -123,7 +129,25 @@ export async function getIssuesSnapshot(
   return parseResponse<SnapshotResponse>(response);
 }
 
+export async function getPullRequestDashboard(
+  windowOption: PullRequestWindowOption,
+  refresh = false,
+): Promise<PullRequestDashboardResponse> {
+  const url = new URL(`${getApiBaseUrl()}/api/github/pull-requests`);
+  url.searchParams.set("window", windowOption);
+  url.searchParams.set("refresh", String(refresh));
+  const response = await fetch(url, {
+    cache: "no-store",
+  });
+  return parseResponse<PullRequestDashboardResponse>(response);
+}
+
 export async function getLocalSessionStatus(): Promise<LocalSessionStatus> {
+  const desktopSession = getDesktopBridge()?.getSessionStatus;
+  if (desktopSession) {
+    return desktopSession();
+  }
+
   const response = await fetch(`${getApiBaseUrl()}/api/session/status`, {
     cache: "no-store",
   });
@@ -139,7 +163,17 @@ export async function waitForLocalSessionStatus(
 
   while (Date.now() < deadline) {
     try {
-      return await getLocalSessionStatus();
+      const status = await getLocalSessionStatus();
+      const waitForDesktopBackend = getDesktopBridge()?.waitForBackendReady;
+
+      if (status.configured && waitForDesktopBackend) {
+        const backendStatus = await waitForDesktopBackend();
+        if (!backendStatus.ready) {
+          throw new Error("El backend local de Electron no está preparado.");
+        }
+      }
+
+      return status;
     } catch (error) {
       lastError =
         error instanceof Error
@@ -155,6 +189,11 @@ export async function waitForLocalSessionStatus(
 export async function saveLocalSession(
   payload: LocalSessionPayload,
 ): Promise<LocalSessionStatus> {
+  const saveDesktopSession = getDesktopBridge()?.saveSession;
+  if (saveDesktopSession) {
+    return saveDesktopSession(payload);
+  }
+
   const response = await fetch(`${getApiBaseUrl()}/api/session`, {
     body: JSON.stringify(payload),
     headers: {
@@ -167,6 +206,11 @@ export async function saveLocalSession(
 }
 
 export async function clearLocalSession(): Promise<LocalSessionStatus> {
+  const clearDesktopSession = getDesktopBridge()?.clearSession;
+  if (clearDesktopSession) {
+    return clearDesktopSession();
+  }
+
   const response = await fetch(`${getApiBaseUrl()}/api/session`, {
     method: "DELETE",
   });

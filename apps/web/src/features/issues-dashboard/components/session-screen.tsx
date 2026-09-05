@@ -57,7 +57,7 @@ export function SessionScreen({
             <Input
               aria-label="Usuario de GitHub"
               autoCapitalize="off"
-              autoComplete="username"
+              autoComplete="off"
               autoCorrect="off"
               data-enable-grammarly="false"
               data-gramm="false"

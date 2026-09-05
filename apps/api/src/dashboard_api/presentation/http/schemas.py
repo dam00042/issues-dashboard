@@ -11,16 +11,21 @@ from dashboard_api.application.issues.service import (
     IssueLocalStateTarget,
 )
 from dashboard_api.domain.issues.models import (
+    GitHubProjectFieldValue,
+    GitHubProjectItem,
+    GitHubPullRequest,
     IssueLocalState,
     IssueLocalStateChange,
     NoteBlock,
     NoteBlockItem,
+    ProjectFieldKind,
     TrackedIssue,
 )
 
 if TYPE_CHECKING:
     from dashboard_api.application.issues.service import (
         IssueDashboardSnapshot,
+        PullRequestDashboard,
     )
     from dashboard_api.application.session.service import (
         GitHubSessionStatus,
@@ -151,6 +156,126 @@ class RepositoryPayload(CamelModel):
         )
 
 
+class ProjectFieldValuePayload(CamelModel):
+    """Represent one populated GitHub Projects field."""
+
+    field_id: str
+    field_name: str
+    kind: ProjectFieldKind
+    value: str
+
+    @classmethod
+    def from_domain(cls, field: GitHubProjectFieldValue) -> Self:
+        """Build a project field payload from a domain value."""
+        return cls(
+            field_id=field.field_id,
+            field_name=field.field_name,
+            kind=field.kind,
+            value=field.value,
+        )
+
+
+class PullRequestPayload(CamelModel):
+    """Represent the Pull Request information displayed by the dashboard."""
+
+    node_id: str
+    repository_full_name: str
+    number: int
+    title: str
+    html_url: str
+    state: Literal["open", "closed", "merged"]
+    is_draft: bool
+    author_login: str
+    reviewer_logins: list[str] = Field(default_factory=list)
+    updated_at: str | None = None
+    merged_at: str | None = None
+    review_decision: (
+        Literal[
+            "approved",
+            "changes_requested",
+            "review_required",
+        ]
+        | None
+    ) = None
+    viewer_review_state: str | None = None
+    review_requested_from_viewer: bool = False
+    viewer_role: Literal["authored", "review_requested", "reviewed"] | None = None
+    comments_count: int = 0
+
+    @classmethod
+    def from_domain(cls, pull_request: GitHubPullRequest) -> Self:
+        """Build a Pull Request payload from its domain representation."""
+        return cls(
+            node_id=pull_request.node_id,
+            repository_full_name=pull_request.repository_full_name,
+            number=pull_request.number,
+            title=pull_request.title,
+            html_url=pull_request.html_url,
+            state=pull_request.state,
+            is_draft=pull_request.is_draft,
+            author_login=pull_request.author_login,
+            reviewer_logins=list(pull_request.reviewer_logins),
+            updated_at=pull_request.updated_at,
+            merged_at=pull_request.merged_at,
+            review_decision=pull_request.review_decision,
+            viewer_review_state=pull_request.viewer_review_state,
+            review_requested_from_viewer=(pull_request.review_requested_from_viewer),
+            viewer_role=pull_request.viewer_role,
+            comments_count=pull_request.comments_count,
+        )
+
+
+class ProjectItemPayload(CamelModel):
+    """Represent the GitHub Project containing an issue."""
+
+    project_id: str
+    project_number: int
+    project_title: str
+    project_url: str
+    fields: list[ProjectFieldValuePayload]
+    linked_pull_requests: list[PullRequestPayload]
+
+    @classmethod
+    def from_domain(cls, project_item: GitHubProjectItem) -> Self:
+        """Build a project item payload from a domain item."""
+        return cls(
+            project_id=project_item.project_id,
+            project_number=project_item.project_number,
+            project_title=project_item.project_title,
+            project_url=project_item.project_url,
+            fields=[
+                ProjectFieldValuePayload.from_domain(field)
+                for field in project_item.fields
+            ],
+            linked_pull_requests=[
+                PullRequestPayload.from_domain(pull_request)
+                for pull_request in project_item.linked_pull_requests
+            ],
+        )
+
+
+class PullRequestDashboardResponse(CamelModel):
+    """Represent the on-demand Pull Request dashboard response."""
+
+    pull_requests: list[PullRequestPayload]
+    warning: str | None = None
+    source: Literal["live", "cache"] = "cache"
+    refreshed_at: str | None = None
+
+    @classmethod
+    def from_domain(cls, dashboard: PullRequestDashboard) -> Self:
+        """Build an HTTP response from the Pull Request dashboard."""
+        return cls(
+            pull_requests=[
+                PullRequestPayload.from_domain(pull_request)
+                for pull_request in dashboard.pull_requests
+            ],
+            warning=dashboard.warning,
+            source=dashboard.source,
+            refreshed_at=dashboard.refreshed_at,
+        )
+
+
 class IssuePayload(CamelModel):
     """Represent one tracked issue in the dashboard snapshot."""
 
@@ -168,6 +293,7 @@ class IssuePayload(CamelModel):
     local_state: IssueLocalStatePayload
     first_seen_at: str
     synced_at: str
+    project_items: list[ProjectItemPayload]
 
     @classmethod
     def from_domain(cls, issue: TrackedIssue) -> Self:
@@ -187,6 +313,10 @@ class IssuePayload(CamelModel):
             local_state=IssueLocalStatePayload.from_domain(issue.local_state),
             first_seen_at=issue.first_seen_at,
             synced_at=issue.synced_at,
+            project_items=[
+                ProjectItemPayload.from_domain(project_item)
+                for project_item in issue.project_items
+            ],
         )
 
 
@@ -196,6 +326,9 @@ class SnapshotMetaPayload(CamelModel):
     source: Literal["live", "cache"]
     refreshed_at: str
     closed_window_months: int | None = None
+    closed_window_amount: int | None = None
+    closed_window_unit: Literal["days", "months", "years"] | None = None
+    project_fields_warning: str | None = None
 
     @classmethod
     def from_domain(cls, snapshot: IssueDashboardSnapshot) -> Self:
@@ -203,7 +336,23 @@ class SnapshotMetaPayload(CamelModel):
         return cls(
             source=snapshot.source,
             refreshed_at=snapshot.refreshed_at,
-            closed_window_months=snapshot.closed_window_months,
+            closed_window_months=(
+                snapshot.closed_window.amount
+                if snapshot.closed_window is not None
+                and snapshot.closed_window.unit == "months"
+                else None
+            ),
+            closed_window_amount=(
+                snapshot.closed_window.amount
+                if snapshot.closed_window is not None
+                else None
+            ),
+            closed_window_unit=(
+                snapshot.closed_window.unit
+                if snapshot.closed_window is not None
+                else None
+            ),
+            project_fields_warning=snapshot.project_fields_warning,
         )
 
 

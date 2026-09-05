@@ -5,9 +5,24 @@ import type { ThemeMode } from "@/types/desktop";
 export type PriorityValue = 1 | 2 | 3 | 4;
 export type NoteBlockKind = "text" | "checklist" | "ordered";
 export type RemoteIssueState = "open" | "closed";
-export type ClosedWindowOption = "all" | `${number}`;
-export type DashboardSection = "board" | "completed";
+export type RemoteIssueStateFilter = RemoteIssueState | "all";
+export type ClosedWindowUnit = "d" | "m" | "y";
+export type ClosedWindowOption = "all" | `${number}${ClosedWindowUnit}`;
+export type DashboardSection = "board" | "completed" | "pull_requests";
 export type LocalIssueStatus = "active" | "in_review" | "completed";
+export type ProjectFieldKind =
+  | "date"
+  | "iteration"
+  | "labels"
+  | "milestone"
+  | "multi_select"
+  | "number"
+  | "pull_requests"
+  | "repository"
+  | "reviewers"
+  | "single_select"
+  | "text"
+  | "users";
 
 export interface NoteBlockItem {
   checked: boolean;
@@ -40,6 +55,68 @@ export interface RepositorySummary {
   ownerLogin: string;
 }
 
+export interface GitHubProjectFieldValue {
+  fieldId: string;
+  fieldName: string;
+  kind: ProjectFieldKind;
+  value: string;
+}
+
+export interface GitHubProjectItem {
+  fields: GitHubProjectFieldValue[];
+  linkedPullRequests?: GitHubPullRequest[];
+  projectId: string;
+  projectNumber: number;
+  projectTitle: string;
+  projectUrl: string;
+}
+
+export type PullRequestState = "open" | "closed" | "merged";
+export type PullRequestStateFilter =
+  | PullRequestState
+  | "all"
+  | "draft"
+  | "custom";
+export type PullRequestWindowOption = `${number}${ClosedWindowUnit}`;
+export type PullRequestViewerRole =
+  | "authored"
+  | "review_requested"
+  | "reviewed";
+
+export interface GitHubPullRequest {
+  authorLogin: string;
+  commentsCount: number;
+  htmlUrl: string;
+  isDraft: boolean;
+  mergedAt: string | null;
+  nodeId: string;
+  number: number;
+  repositoryFullName: string;
+  reviewDecision: "approved" | "changes_requested" | "review_required" | null;
+  reviewerLogins: string[];
+  reviewRequestedFromViewer: boolean;
+  state: PullRequestState;
+  title: string;
+  updatedAt: string | null;
+  viewerReviewState: string | null;
+  viewerRole: PullRequestViewerRole | null;
+}
+
+export interface PullRequestDashboardResponse {
+  pullRequests: GitHubPullRequest[];
+  refreshedAt: string | null;
+  source: "live" | "cache";
+  warning: string | null;
+}
+
+export interface ProjectFilterDefinition {
+  key: string;
+  label: string;
+  options: string[];
+}
+
+export type SelectedProjectFields = Record<string, string>;
+
 export interface DashboardIssue {
   body: string;
   closedAt: string | null;
@@ -50,6 +127,7 @@ export interface DashboardIssue {
   issueKey: string;
   localState: IssueLocalState;
   number: number;
+  projectItems: GitHubProjectItem[];
   remoteState: RemoteIssueState;
   repository: RepositorySummary;
   syncedAt: string;
@@ -58,9 +136,12 @@ export interface DashboardIssue {
 }
 
 export interface SnapshotMeta {
+  closedWindowAmount: number | null;
   closedWindowMonths: number | null;
+  closedWindowUnit: "days" | "months" | "years" | null;
   refreshedAt: string;
   source: "cache" | "live";
+  projectFieldsWarning: string | null;
 }
 
 export interface SnapshotResponse {

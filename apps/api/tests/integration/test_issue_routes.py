@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
 from dashboard_api.app.main import create_app
+from dashboard_api.application.issues.service import AssignedIssuesFetchResult
 from dashboard_api.domain.issues.defaults import build_issue_key
-from dashboard_api.domain.issues.models import GitHubAssignedIssue
+from dashboard_api.domain.issues.models import (
+    ClosedIssueWindow,
+    GitHubAssignedIssue,
+    GitHubProjectFieldValue,
+    GitHubProjectItem,
+)
 from dashboard_api.settings import AppSettings
 from dashboard_api.shared.time import subtract_months, utc_now
 
@@ -24,6 +31,7 @@ SYNCED_COMPLETION_PRIORITY = 3
 IMMEDIATE_SYNCED_PRIORITY = 3
 DEDICATED_PRIORITY = 2
 RESTORED_PRIORITY = 4
+OPEN_ISSUE_NUMBER = 101
 
 
 def _relative_timestamp(months_ago: int) -> str:
@@ -35,17 +43,28 @@ def _relative_timestamp(months_ago: int) -> str:
 class FakeGitHubAssignedIssuesClient:
     """Provide deterministic issues for integration tests."""
 
-    def __init__(self, issues: tuple[GitHubAssignedIssue, ...]) -> None:
+    def __init__(
+        self,
+        issues: tuple[GitHubAssignedIssue, ...],
+        project_fields_warning: str | None = None,
+    ) -> None:
         """Store the issues that the fake gateway should return."""
-        self._issues = issues
+        self.issues = issues
+        self.project_fields_warning = project_fields_warning
 
     def can_refresh(self) -> bool:
         """Pretend that GitHub credentials are configured."""
         return True
 
-    def fetch_assigned_issues(self) -> tuple[GitHubAssignedIssue, ...]:
+    def fetch_assigned_issues(
+        self,
+        _closed_window: ClosedIssueWindow | None,
+    ) -> AssignedIssuesFetchResult:
         """Return the configured fake issues."""
-        return self._issues
+        return AssignedIssuesFetchResult(
+            issues=self.issues,
+            project_fields_warning=self.project_fields_warning,
+        )
 
 
 def _build_issue(
@@ -101,17 +120,35 @@ class IssueRoutesIntegrationTests(TestCase):
             remote_state="closed",
             closed_at=_relative_timestamp(8),
         )
-        open_issue = _build_issue(
-            github_id=1,
-            repository_full_name="octo/open",
-            issue_number=101,
-            remote_state="open",
-            closed_at=None,
+        open_issue = replace(
+            _build_issue(
+                github_id=1,
+                repository_full_name="octo/open",
+                issue_number=OPEN_ISSUE_NUMBER,
+                remote_state="open",
+                closed_at=None,
+            ),
+            project_items=(
+                GitHubProjectItem(
+                    project_id="PROJECT_3",
+                    project_number=3,
+                    project_title="Roadmap",
+                    project_url="https://github.com/orgs/octo/projects/3",
+                    fields=(
+                        GitHubProjectFieldValue(
+                            field_id="STATUS",
+                            field_name="Status",
+                            kind="single_select",
+                            value="In Review",
+                        ),
+                    ),
+                ),
+            ),
         )
-        fake_client = FakeGitHubAssignedIssuesClient(
+        self.fake_client = FakeGitHubAssignedIssuesClient(
             (open_issue, recent_closed_issue, old_closed_issue),
         )
-        app = create_app(settings=settings, github_client=fake_client)
+        app = create_app(settings=settings, github_client=self.fake_client)
         self._client_context = TestClient(app)
         self.client = self._client_context.__enter__()
 
@@ -159,6 +196,63 @@ class IssueRoutesIntegrationTests(TestCase):
             message = "Expected every issue to be returned for the 'all' filter."
             raise AssertionError(message)
 
+    def test_snapshot_exposes_cached_github_project_fields(self) -> None:
+        """Persist and serialize Projects metadata with the issue projection."""
+        response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1"},
+        )
+
+        if response.status_code != HTTP_OK:
+            message = "Expected a successful snapshot response."
+            raise AssertionError(message)
+        issue = next(
+            item
+            for item in response.json()["issues"]
+            if item["number"] == OPEN_ISSUE_NUMBER
+        )
+        project_item = issue["projectItems"][0]
+        if project_item["projectTitle"] != "Roadmap":
+            message = "Expected the Project title in the snapshot."
+            raise AssertionError(message)
+        if project_item["fields"][0]["value"] != "In Review":
+            message = "Expected the Project Status in the snapshot."
+            raise AssertionError(message)
+
+    def test_snapshot_preserves_project_fields_after_enrichment_warning(self) -> None:
+        """Keep cached Projects metadata when a refresh cannot enrich it."""
+        first_response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1"},
+        )
+        if first_response.status_code != HTTP_OK:
+            message = "Expected the initial Projects snapshot to succeed."
+            raise AssertionError(message)
+
+        self.fake_client.issues = tuple(
+            replace(issue, project_items=()) for issue in self.fake_client.issues
+        )
+        self.fake_client.project_fields_warning = "Projects unavailable."
+
+        warning_response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1"},
+        )
+        if warning_response.status_code != HTTP_OK:
+            message = "Expected the warning snapshot to succeed."
+            raise AssertionError(message)
+
+        payload = warning_response.json()
+        issue = next(
+            item for item in payload["issues"] if item["number"] == OPEN_ISSUE_NUMBER
+        )
+        if issue["projectItems"][0]["projectTitle"] != "Roadmap":
+            message = "Expected cached Projects metadata to survive the warning."
+            raise AssertionError(message)
+        if payload["meta"]["projectFieldsWarning"] != "Projects unavailable.":
+            message = "Expected the Projects warning to remain visible in metadata."
+            raise AssertionError(message)
+
     def test_snapshot_accepts_manual_positive_month_values(self) -> None:
         """Support any positive month count rather than only presets."""
         response = self.client.get(
@@ -173,6 +267,34 @@ class IssueRoutesIntegrationTests(TestCase):
 
         if len(payload["issues"]) != ALL_VISIBLE_ISSUES:
             message = "Expected the custom month filter to include older closures."
+            raise AssertionError(message)
+
+    def test_snapshot_accepts_day_and_year_units(self) -> None:
+        """Support a compact amount plus unit for the generic settings modal."""
+        day_response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1d"},
+        )
+        year_response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1y"},
+        )
+
+        if day_response.status_code != HTTP_OK:
+            message = "Expected a successful response for a day window."
+            raise AssertionError(message)
+        if len(day_response.json()["issues"]) != 1:
+            message = "Expected a one-day window to retain only the open fixture."
+            raise AssertionError(message)
+        if year_response.status_code != HTTP_OK:
+            message = "Expected a successful response for a year window."
+            raise AssertionError(message)
+        year_payload = year_response.json()
+        if len(year_payload["issues"]) != ALL_VISIBLE_ISSUES:
+            message = "Expected a one-year window to include older closures."
+            raise AssertionError(message)
+        if year_payload["meta"]["closedWindowUnit"] != "years":
+            message = "Expected the selected window unit in snapshot metadata."
             raise AssertionError(message)
 
     def test_snapshot_rejects_invalid_closed_window_values(self) -> None:

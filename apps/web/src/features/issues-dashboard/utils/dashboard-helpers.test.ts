@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-
-import type { DashboardIssue, IssueLocalState, NoteBlock } from "@/features/issues-dashboard/types";
+import { PROJECT_STATUS_DEFINITIONS } from "@/features/issues-dashboard/project-statuses";
+import type {
+  DashboardIssue,
+  IssueLocalState,
+  NoteBlock,
+} from "@/features/issues-dashboard/types";
 import {
+  buildProjectFilterDefinitions,
   buildSyncPayload,
   defaultNoteBlocks,
   filterIssuesBySearch,
+  issueMatchesProjectFilters,
+  issueMatchesRemoteState,
   normalizeNoteBlocks,
   sortIssuesByPinnedAndUpdated,
 } from "./dashboard-helpers";
@@ -40,6 +47,7 @@ function createIssue(
     issueKey,
     localState: createLocalState(),
     number: numericId,
+    projectItems: [],
     remoteState: "open",
     repository: {
       fullName: "example/repo",
@@ -55,6 +63,44 @@ function createIssue(
 }
 
 describe("issue helpers", () => {
+  it("keeps the complete canonical Project status workflow in a fixed order", () => {
+    expect(
+      PROJECT_STATUS_DEFINITIONS.map((definition) => definition.label),
+    ).toEqual([
+      "Backlog",
+      "To Do",
+      "Stopped",
+      "In Progress",
+      "In Review",
+      "Approved",
+      "Develop",
+      "Integration (QA)",
+      "Production",
+      "Done",
+      "Second Life",
+    ]);
+  });
+
+  it("defaults the first next-action line to checklist mode", () => {
+    const blocks = defaultNoteBlocks();
+
+    expect(blocks[0]?.items[0]?.kind).toBe("text");
+    expect(blocks[1]?.items[0]?.kind).toBe("checklist");
+  });
+
+  it("upgrades the old blank next-action default to checklist mode", () => {
+    const legacyBlocks = defaultNoteBlocks();
+    const nextActionItem = legacyBlocks[1]?.items[0];
+
+    if (!nextActionItem)
+      throw new Error("Expected a next-action item fixture.");
+    nextActionItem.kind = "text";
+
+    const normalizedBlocks = normalizeNoteBlocks(legacyBlocks);
+
+    expect(normalizedBlocks[1]?.items[0]?.kind).toBe("checklist");
+  });
+
   it("normalizes legacy note blocks into the two fixed sections", () => {
     const legacyBlocks = [
       {
@@ -77,7 +123,7 @@ describe("issue helpers", () => {
         label: "Checklist",
         text: "",
       },
-    ] as NoteBlock[];
+    ] as unknown as NoteBlock[];
 
     const normalizedBlocks = normalizeNoteBlocks(legacyBlocks);
 
@@ -108,6 +154,16 @@ describe("issue helpers", () => {
     expect(filterIssuesBySearch(issues, "auth")).toHaveLength(1);
     expect(filterIssuesBySearch(issues, "platform")).toHaveLength(1);
     expect(filterIssuesBySearch(issues, "77")).toHaveLength(1);
+  });
+
+  it("keeps the GitHub open and closed state filter independent", () => {
+    const openIssue = createIssue("repo-42", { remoteState: "open" });
+    const closedIssue = createIssue("repo-77", { remoteState: "closed" });
+
+    expect(issueMatchesRemoteState(openIssue, "open")).toBe(true);
+    expect(issueMatchesRemoteState(closedIssue, "open")).toBe(false);
+    expect(issueMatchesRemoteState(closedIssue, "closed")).toBe(true);
+    expect(issueMatchesRemoteState(openIssue, "all")).toBe(true);
   });
 
   it("sorts pinned issues before recent issues", () => {
@@ -152,6 +208,191 @@ describe("issue helpers", () => {
         repoName: "repo",
         state: dirtyState,
       },
+    ]);
+  });
+
+  it("builds dynamic GitHub Project filters and matches their values", () => {
+    const projectItems = [
+      {
+        fields: [
+          {
+            fieldId: "status-field",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "In Review",
+          },
+          {
+            fieldId: "status-field-in-review-decorated",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "👀 In review",
+          },
+          {
+            fieldId: "status-field-in-progress",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "🏗 In Progress",
+          },
+          {
+            fieldId: "status-field-in-progress-plain",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "In progress",
+          },
+          {
+            fieldId: "status-field-backlog",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "📋 Backlog",
+          },
+          {
+            fieldId: "status-field-backlog-plain",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "Backlog",
+          },
+          {
+            fieldId: "status-field-done-decorated",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "🌐 Done",
+          },
+          {
+            fieldId: "status-field-done-plain",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "Done",
+          },
+          {
+            fieldId: "status-field-stopped",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "⛔ Stopped",
+          },
+          {
+            fieldId: "status-field-to-do",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "📝 TO DO",
+          },
+          {
+            fieldId: "status-field-approved",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "🔖 Approved",
+          },
+          {
+            fieldId: "status-field-production",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "🔖 Production",
+          },
+          {
+            fieldId: "status-field-develop",
+            fieldName: "Status",
+            kind: "single_select" as const,
+            value: "🚀 Develop",
+          },
+          {
+            fieldId: "sprint-field",
+            fieldName: "Sprint",
+            kind: "iteration" as const,
+            value: "Sprint 8",
+          },
+          {
+            fieldId: "priority-field",
+            fieldName: "Priority",
+            kind: "single_select" as const,
+            value: "High",
+          },
+        ],
+        projectId: "project-1",
+        projectNumber: 3,
+        projectTitle: "Roadmap",
+        projectUrl: "https://github.com/orgs/example/projects/3",
+      },
+    ];
+    const issues = [createIssue("repo-99", { projectItems })];
+    const issue = issues[0];
+    if (!issue) throw new Error("Expected a project issue fixture.");
+
+    const definitions = buildProjectFilterDefinitions(issues);
+
+    expect(definitions.map((definition) => definition.label)).toEqual([
+      "Status de Projects",
+      "Sprint",
+      "Priority",
+    ]);
+    expect(
+      definitions.find((definition) => definition.key === "status")?.options,
+    ).toEqual([
+      "Backlog",
+      "To Do",
+      "Stopped",
+      "In Progress",
+      "In Review",
+      "Approved",
+      "Develop",
+      "Production",
+      "Done",
+    ]);
+    expect(
+      definitions.find((definition) => definition.key === "sprint")?.options,
+    ).toEqual(["Sprint 8 (Current)"]);
+    expect(
+      definitions.find((definition) => definition.key === "priority")?.options,
+    ).toEqual(["Critical", "High", "Medium", "Low"]);
+    expect(
+      issueMatchesProjectFilters(issue, {
+        status: "In Review",
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesProjectFilters(issue, {
+        status: "In Progress",
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesProjectFilters(issue, {
+        status: "Backlog",
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesProjectFilters(issue, {
+        priority: "Low",
+      }),
+    ).toBe(false);
+    expect(
+      issueMatchesProjectFilters(issue, {
+        sprint: "Sprint 8 (Current)",
+      }),
+    ).toBe(true);
+  });
+
+  it("sorts sprints newest first using their numeric suffix", () => {
+    const issue = createIssue("repo-sprints", {
+      projectItems: [
+        {
+          fields: ["Sprint 9", "Sprint 36", "Sprint 10"].map(
+            (value, index) => ({
+              fieldId: `sprint-${String(index)}`,
+              fieldName: "Sprint",
+              kind: "iteration" as const,
+              value,
+            }),
+          ),
+          projectId: "project-sprints",
+          projectNumber: 1,
+          projectTitle: "Roadmap",
+          projectUrl: "https://github.com/orgs/example/projects/1",
+        },
+      ],
+    });
+
+    expect(buildProjectFilterDefinitions([issue])[0]?.options).toEqual([
+      "Sprint 36 (Current)",
+      "Sprint 10",
+      "Sprint 9",
     ]);
   });
 });

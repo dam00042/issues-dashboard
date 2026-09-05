@@ -1,21 +1,20 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import {
-  CheckCheck,
-  ExternalLink,
-  Eye,
-  PanelRightClose,
-  RotateCcw,
-} from "lucide-react";
+import { CheckCheck, ExternalLink, Eye, RotateCcw } from "lucide-react";
 import { type CSSProperties, useEffect, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
+import { IssuePrioritySelector } from "@/features/issues-dashboard/components/issue-priority-selector";
+import { LinkedPullRequests } from "@/features/issues-dashboard/components/linked-pull-requests";
 import { NotesBlockEditor } from "@/features/issues-dashboard/components/notes-block-editor";
 import { ResizeHandle } from "@/features/issues-dashboard/components/resize-handle";
-import type { DashboardIssue } from "@/features/issues-dashboard/types";
+import type {
+  DashboardIssue,
+  PriorityValue,
+} from "@/features/issues-dashboard/types";
 import {
   formatAbsoluteTimestamp,
   getRemoteStateDotClassName,
@@ -26,15 +25,14 @@ export interface CompletedBoardProps {
   completedIssues: DashboardIssue[];
   isSidebarCollapsed: boolean;
   reviewIssues: DashboardIssue[];
-  search?: string;
   selectedIssueKey: string | null;
   onCollapseSidebar: () => void;
   onExpandSidebar: () => void;
   onIssueSelect: (issueKey: string) => void;
   onRestoreIssue: (issueKey: string) => void;
+  onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
   onReviewIssue?: (issueKey: string) => void;
   onCompleteIssue?: (issueKey: string) => void;
-  onSearchChange?: (nextValue: string) => void;
   onUpdateBlocks: (
     issueKey: string,
     nextBlocks: DashboardIssue["localState"]["noteBlocks"],
@@ -101,13 +99,12 @@ export function CompletedBoard({
   onExpandSidebar,
   onIssueSelect,
   onRestoreIssue,
+  onSetPriority,
   onReviewIssue,
   onCompleteIssue,
   onUpdateBlocks,
 }: CompletedBoardProps) {
   const sidebarIssue = activeIssue;
-  const isSidebarVisible = Boolean(sidebarIssue && !isSidebarCollapsed);
-
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [dragState, setDragState] = useState<{
     startX: number;
@@ -124,7 +121,10 @@ export function CompletedBoard({
 
     const handleMouseMove = (event: MouseEvent) => {
       const delta = dragState.startX - event.clientX;
-      const nextWidth = Math.min(750, Math.max(280, dragState.startWidth + delta));
+      const nextWidth = Math.min(
+        750,
+        Math.max(280, dragState.startWidth + delta),
+      );
       setSidebarWidth(nextWidth);
     };
 
@@ -142,7 +142,9 @@ export function CompletedBoard({
   }, [dragState]);
 
   return (
-    <div className={`flex h-full min-h-0 min-w-0 ${sidebarIssue ? "gap-0" : "gap-3"}`}>
+    <div
+      className={`flex h-full min-h-0 min-w-0 ${sidebarIssue ? "gap-0" : "gap-3"}`}
+    >
       {/* 50/50 Quadrants Area - "En revisión" and "Completadas localmente" split available space 50/50 */}
       <div className="grid flex-1 min-h-0 min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
         {/* Quadrant 1: En revisión */}
@@ -164,9 +166,9 @@ export function CompletedBoard({
             reviewIssues.map((issue) => (
               <DraggableIssueCard
                 key={issue.issueKey}
+                isSelected={selectedIssueKey === issue.issueKey}
                 issue={issue}
                 onIssueSelect={onIssueSelect}
-                selectedIssueKey={selectedIssueKey}
                 onCompleteIssue={onCompleteIssue}
                 onRestoreIssue={onRestoreIssue}
               />
@@ -193,9 +195,9 @@ export function CompletedBoard({
             completedIssues.map((issue) => (
               <DraggableIssueCard
                 key={issue.issueKey}
+                isSelected={selectedIssueKey === issue.issueKey}
                 issue={issue}
                 onIssueSelect={onIssueSelect}
-                selectedIssueKey={selectedIssueKey}
                 onRestoreIssue={onRestoreIssue}
                 onReviewIssue={onReviewIssue}
               />
@@ -286,8 +288,16 @@ export function CompletedBoard({
             ) : null}
           </div>
 
+          <LinkedPullRequests issue={sidebarIssue} />
+
+          <IssuePrioritySelector
+            issue={sidebarIssue}
+            onSetPriority={onSetPriority}
+          />
+
           <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3.5 py-3">
             <NotesBlockEditor
+              key={sidebarIssue.issueKey}
               blocks={sidebarIssue.localState.noteBlocks}
               onBlocksChange={(nextBlocks) =>
                 onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)

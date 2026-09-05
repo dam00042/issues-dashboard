@@ -34,7 +34,7 @@ export default function RootLayout({
       lang="es"
       className={`${inter.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full font-sans">
+      <body suppressHydrationWarning className="min-h-full font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -21,6 +21,7 @@ class AppSettings(BaseSettings):
         env_file=(PROJECT_ROOT / ".env.local", PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     github_token: str = ""

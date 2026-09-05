@@ -15,14 +15,16 @@ from dashboard_api.shared.time import utc_now_iso
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from dashboard_api.domain.issues.models import (
-        GitHubAssignedIssue,
-        IssueLocalState,
-        NoteBlock,
-        PriorityValue,
-        TrackedIssue,
-    )
-
+from dashboard_api.domain.issues.models import (
+    ClosedIssueWindow,
+    GitHubAssignedIssue,
+    GitHubPullRequest,
+    IssueLocalState,
+    NoteBlock,
+    PriorityValue,
+    PullRequestWindow,
+    TrackedIssue,
+)
 
 LOGGER = logging.getLogger(__name__)
 SnapshotSource = Literal["live", "cache"]
@@ -37,14 +39,114 @@ class GitHubAuthenticationError(Exception):
         self.status_code = status_code
 
 
+@dataclass(frozen=True, slots=True)
+class AssignedIssuesFetchResult:
+    """Represent assigned issues plus optional Projects enrichment diagnostics."""
+
+    issues: tuple[GitHubAssignedIssue, ...]
+    project_fields_warning: str | None = None
+
+
 class AssignedIssuesGateway(Protocol):
     """Describe the remote gateway used to refresh assigned issues."""
 
     def can_refresh(self) -> bool:
         """Return whether the gateway has enough credentials to refresh data."""
 
-    def fetch_assigned_issues(self) -> tuple[GitHubAssignedIssue, ...]:
+    def fetch_assigned_issues(
+        self,
+        closed_window: ClosedIssueWindow | None,
+    ) -> AssignedIssuesFetchResult:
         """Fetch the currently assigned issues from GitHub."""
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestFetchResult:
+    """Represent the remote Pull Request activity returned by GitHub."""
+
+    pull_requests: tuple[GitHubPullRequest, ...]
+    warning: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestDashboard:
+    """Represent persisted Pull Request activity exposed to the UI."""
+
+    pull_requests: tuple[GitHubPullRequest, ...]
+    warning: str | None = None
+    source: SnapshotSource = "cache"
+    refreshed_at: str | None = None
+
+
+class GitHubActivityGateway(Protocol):
+    """Describe the remote GitHub activity reads used outside the issue feed."""
+
+    def can_refresh(self) -> bool:
+        """Return whether GitHub activity can be refreshed."""
+
+    def fetch_pull_requests(
+        self,
+        window: PullRequestWindow,
+        *,
+        force: bool = False,
+    ) -> PullRequestFetchResult:
+        """Fetch Pull Requests relevant to the current user."""
+
+
+class PullRequestRepository(Protocol):
+    """Describe the persistent Pull Request projection."""
+
+    def replace_pull_requests(
+        self,
+        pull_requests: tuple[GitHubPullRequest, ...],
+    ) -> None:
+        """Replace the cached Pull Request projection."""
+
+    def list_pull_requests(
+        self,
+        window: PullRequestWindow,
+    ) -> tuple[GitHubPullRequest, ...]:
+        """Return cached Pull Requests inside the requested window."""
+
+    def get_pull_requests_refreshed_at(self) -> str | None:
+        """Return when Pull Requests were last refreshed successfully."""
+
+
+class GitHubActivityService:
+    """Expose persisted Pull Request activity without refreshing Projects."""
+
+    def __init__(
+        self,
+        gateway: GitHubActivityGateway,
+        repository: PullRequestRepository,
+    ) -> None:
+        """Store the GitHub activity gateway and persistent projection."""
+        self._gateway = gateway
+        self._repository = repository
+
+    def get_pull_requests(
+        self,
+        window: PullRequestWindow,
+        *,
+        refresh: bool = False,
+    ) -> PullRequestDashboard:
+        """Return cached Pull Requests and optionally refresh them from GitHub."""
+        warning: str | None = None
+        source: SnapshotSource = "cache"
+
+        if refresh and self._gateway.can_refresh():
+            fetch_result = self._gateway.fetch_pull_requests(window, force=True)
+            warning = fetch_result.warning
+            if warning is None:
+                self._repository.replace_pull_requests(fetch_result.pull_requests)
+                source = "live"
+
+        return PullRequestDashboard(
+            pull_requests=self._repository.list_pull_requests(window),
+            warning=warning,
+            source=source,
+            refreshed_at=self._repository.get_pull_requests_refreshed_at(),
+        )
 
 
 class TrackedIssuesRepository(Protocol):
@@ -56,12 +158,14 @@ class TrackedIssuesRepository(Protocol):
     def replace_remote_projection(
         self,
         remote_issues: tuple[GitHubAssignedIssue, ...],
+        *,
+        preserve_project_items: bool = False,
     ) -> None:
         """Replace the remote projection with the latest fetched issues."""
 
     def list_visible_issues(
         self,
-        closed_window_months: int | None,
+        closed_window: ClosedIssueWindow | None,
     ) -> tuple[TrackedIssue, ...]:
         """List the issues visible for the requested closed-window filter."""
 
@@ -82,7 +186,8 @@ class IssueDashboardSnapshot:
     issues: tuple[TrackedIssue, ...]
     source: SnapshotSource
     refreshed_at: str
-    closed_window_months: int | None
+    closed_window: ClosedIssueWindow | None
+    project_fields_warning: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,14 +215,15 @@ class IssueDashboardSnapshotService:
 
     def build_snapshot(
         self,
-        closed_window_months: int | None,
+        closed_window: ClosedIssueWindow | None,
     ) -> IssueDashboardSnapshot:
         """Build a merged dashboard snapshot for the requested filter."""
         source: SnapshotSource = "cache"
+        project_fields_warning: str | None = None
 
         if self._gateway.can_refresh():
             try:
-                remote_issues = self._gateway.fetch_assigned_issues()
+                fetch_result = self._gateway.fetch_assigned_issues(closed_window)
             except GitHubAuthenticationError:
                 raise
             except httpx.HTTPError as error:
@@ -127,15 +233,20 @@ class IssueDashboardSnapshotService:
                     error,
                 )
             else:
-                self._repository.replace_remote_projection(remote_issues)
+                self._repository.replace_remote_projection(
+                    fetch_result.issues,
+                    preserve_project_items=bool(fetch_result.project_fields_warning),
+                )
+                project_fields_warning = fetch_result.project_fields_warning
                 source = "live"
 
-        issues = self._repository.list_visible_issues(closed_window_months)
+        issues = self._repository.list_visible_issues(closed_window)
         return IssueDashboardSnapshot(
             issues=issues,
             source=source,
             refreshed_at=utc_now_iso(),
-            closed_window_months=closed_window_months,
+            closed_window=closed_window,
+            project_fields_warning=project_fields_warning,
         )
 
 

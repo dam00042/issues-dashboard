@@ -8,6 +8,89 @@ from typing import Literal
 PriorityValue = Literal[1, 2, 3, 4]
 NoteBlockKind = Literal["text", "checklist", "ordered"]
 RemoteIssueState = Literal["open", "closed"]
+ProjectFieldKind = Literal[
+    "date",
+    "iteration",
+    "labels",
+    "milestone",
+    "multi_select",
+    "number",
+    "pull_requests",
+    "repository",
+    "reviewers",
+    "single_select",
+    "text",
+    "users",
+]
+PullRequestState = Literal["open", "closed", "merged"]
+PullRequestViewerRole = Literal["authored", "review_requested", "reviewed"]
+PullRequestReviewDecision = Literal[
+    "approved",
+    "changes_requested",
+    "review_required",
+]
+ClosedIssueWindowUnit = Literal["days", "months", "years"]
+PullRequestWindowUnit = Literal["days", "months", "years"]
+
+
+@dataclass(frozen=True, slots=True)
+class ClosedIssueWindow:
+    """Represent how far back closed issues remain visible."""
+
+    amount: int
+    unit: ClosedIssueWindowUnit
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestWindow:
+    """Represent how far back Pull Request activity is loaded."""
+
+    amount: int
+    unit: PullRequestWindowUnit
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubPullRequest:
+    """Represent the Pull Request data needed by the dashboard."""
+
+    node_id: str
+    repository_full_name: str
+    number: int
+    title: str
+    html_url: str
+    state: PullRequestState
+    is_draft: bool
+    author_login: str
+    updated_at: str | None
+    reviewer_logins: tuple[str, ...] = ()
+    merged_at: str | None = None
+    review_decision: PullRequestReviewDecision | None = None
+    viewer_review_state: str | None = None
+    review_requested_from_viewer: bool = False
+    viewer_role: PullRequestViewerRole | None = None
+    comments_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubProjectFieldValue:
+    """Represent one populated field on a GitHub Projects item."""
+
+    field_id: str
+    field_name: str
+    kind: ProjectFieldKind
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubProjectItem:
+    """Represent the Projects item associated with a GitHub issue."""
+
+    project_id: str
+    project_number: int
+    project_title: str
+    project_url: str
+    fields: tuple[GitHubProjectFieldValue, ...]
+    linked_pull_requests: tuple[GitHubPullRequest, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +147,7 @@ class TrackedIssue:
     local_state: IssueLocalState
     first_seen_at: str
     synced_at: str
+    project_items: tuple[GitHubProjectItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +167,7 @@ class GitHubAssignedIssue:
     created_at: str | None
     updated_at: str | None
     closed_at: str | None
+    project_items: tuple[GitHubProjectItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

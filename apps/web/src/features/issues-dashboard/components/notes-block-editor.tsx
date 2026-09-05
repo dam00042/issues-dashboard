@@ -12,6 +12,7 @@ import {
   type Key,
   type KeyboardEvent,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -59,6 +60,7 @@ const NOTE_KIND_ENTRIES = Object.entries(NOTE_KIND_DEFINITIONS) as [
   NoteBlockKind,
   NoteKindDefinition,
 ][];
+const NEXT_ACTION_BLOCK_ID = "next-action";
 const NOTE_COMMIT_DEBOUNCE_MS = 900;
 const NOTE_TEXTAREA_BASE_CLASS =
   "min-h-[3.25rem] w-full resize-y overflow-hidden rounded-[0.82rem] border border-[rgb(var(--app-border))]/55 bg-[rgb(var(--app-surface))]/95 px-3 py-2.5 text-sm leading-6 text-[rgb(var(--app-foreground))] shadow-none outline-none transition-colors placeholder:text-[rgb(var(--app-muted))]/70 focus:border-[rgb(var(--app-accent))]/45 focus:bg-[rgb(var(--app-surface))] focus:outline-none";
@@ -78,7 +80,7 @@ export function NotesBlockEditor({
   blocks,
   onBlocksChange,
 }: NotesBlockEditorProps) {
-  const normalizedBlocks = normalizeNoteBlocks(blocks);
+  const normalizedBlocks = useMemo(() => normalizeNoteBlocks(blocks), [blocks]);
   const [draftBlocks, setDraftBlocks] = useState<NoteBlock[]>(normalizedBlocks);
   const inputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const commitTimeoutRef = useRef<number | null>(null);
@@ -311,7 +313,11 @@ export function NotesBlockEditor({
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      insertItemAfter(blockId, itemId, item.kind);
+      insertItemAfter(
+        blockId,
+        itemId,
+        blockId === NEXT_ACTION_BLOCK_ID ? "checklist" : item.kind,
+      );
       return;
     }
 

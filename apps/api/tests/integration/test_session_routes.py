@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
 from dashboard_api.app.main import create_app
 from dashboard_api.application.issues.service import (
+    AssignedIssuesFetchResult,
     GitHubAuthenticationError,
 )
 from dashboard_api.settings import AppSettings
+
+if TYPE_CHECKING:
+    from dashboard_api.domain.issues.models import ClosedIssueWindow
 
 HTTP_OK = 200
 HTTP_UNAUTHORIZED = 401
@@ -25,9 +30,12 @@ class EmptyGitHubAssignedIssuesClient:
         """Report that no refresh is available."""
         return False
 
-    def fetch_assigned_issues(self) -> tuple[object, ...]:
+    def fetch_assigned_issues(
+        self,
+        _closed_window: ClosedIssueWindow | None,
+    ) -> AssignedIssuesFetchResult:
         """Return no issues."""
-        return ()
+        return AssignedIssuesFetchResult(issues=())
 
 
 class UnauthorizedGitHubAssignedIssuesClient:
@@ -37,7 +45,10 @@ class UnauthorizedGitHubAssignedIssuesClient:
         """Pretend that credentials are configured."""
         return True
 
-    def fetch_assigned_issues(self) -> tuple[object, ...]:
+    def fetch_assigned_issues(
+        self,
+        _closed_window: ClosedIssueWindow | None,
+    ) -> AssignedIssuesFetchResult:
         """Raise the authentication error expected by the HTTP route."""
         message = "GitHub no ha aceptado las credenciales configuradas."
         raise GitHubAuthenticationError(message, status_code=HTTP_UNAUTHORIZED)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dashboard_api import __version__
 from dashboard_api.application.issues.service import (
     AssignedIssuesGateway,
+    GitHubActivityGateway,
+    GitHubActivityService,
     IssueDashboardSnapshotService,
     IssueLocalStateCommandService,
     IssueLocalStateSyncService,
@@ -26,6 +28,9 @@ from dashboard_api.infrastructure.persistence.sqlite_repository import (
 )
 from dashboard_api.infrastructure.session.local_session_store import (
     LocalGitHubSessionStore,
+)
+from dashboard_api.presentation.http.routes.github_activity import (
+    router as github_activity_router,
 )
 from dashboard_api.presentation.http.routes.health import (
     router as health_router,
@@ -65,6 +70,10 @@ def create_app(
         repository=repository,
         gateway=resolved_github_client,
     )
+    github_activity_service = GitHubActivityService(
+        gateway=cast("GitHubActivityGateway", resolved_github_client),
+        repository=repository,
+    )
     sync_service = IssueLocalStateSyncService(repository=repository)
     command_service = IssueLocalStateCommandService(repository=repository)
 
@@ -76,6 +85,7 @@ def create_app(
         app.state.command_service = command_service
         app.state.sync_service = sync_service
         app.state.session_service = session_service
+        app.state.github_activity_service = github_activity_service
         yield
 
     app = FastAPI(
@@ -91,6 +101,7 @@ def create_app(
         allow_headers=["*"],
     )
     app.include_router(health_router)
+    app.include_router(github_activity_router)
     app.include_router(issues_router)
     app.include_router(session_router)
     return app

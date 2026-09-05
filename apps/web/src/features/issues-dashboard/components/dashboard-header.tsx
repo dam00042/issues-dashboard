@@ -3,14 +3,16 @@
 import { Button, Dropdown } from "@heroui/react";
 import {
   CheckCircle2,
+  Download,
+  GitPullRequest,
   LayoutGrid,
-  Loader2,
   LogOut,
   Monitor,
   MoonStar,
   RefreshCw,
   SlidersHorizontal,
   SunMedium,
+  Upload,
   UserRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -19,15 +21,15 @@ import type { DashboardSection } from "@/features/issues-dashboard/types";
 import type { ThemeMode } from "@/types/desktop";
 
 export interface DashboardHeaderProps {
+  isDesktopClient: boolean;
   isFetching: boolean;
+  lastRefreshLabel: string;
   section: DashboardSection;
-  topbarStatusMessage: string;
-  topbarHasError: boolean;
-  topbarHasWarning: boolean;
-  topbarShowSpinner: boolean;
   username: string | null;
   onClearSession: () => void;
   onEditSession: () => void;
+  onExportDatabase: () => void;
+  onImportDatabase: () => void;
   onOpenSettings: () => void;
   onRefresh: () => void;
   onSectionChange: (section: DashboardSection) => void;
@@ -35,15 +37,15 @@ export interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({
+  isDesktopClient,
   isFetching,
+  lastRefreshLabel,
   section,
-  topbarStatusMessage,
-  topbarHasError,
-  topbarHasWarning,
-  topbarShowSpinner,
   username,
   onClearSession,
   onEditSession,
+  onExportDatabase,
+  onImportDatabase,
   onOpenSettings,
   onRefresh,
   onSectionChange,
@@ -93,30 +95,44 @@ export function DashboardHeader({
                 <span>Revisión y cierre</span>
               </span>
             </Button>
-          </div>
-
-          {topbarStatusMessage ? (
-            <span
-              className={`inline-flex max-w-[30rem] items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap rounded-[0.8rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface-strong))]/90 px-2.5 py-1 text-[11px] font-medium ${
-                topbarHasError
-                  ? "text-[rgb(var(--app-danger))]"
-                  : topbarHasWarning
-                  ? "text-[#d97706]"
-                  : "text-[rgb(var(--app-muted))]"
-              }`}
+            <Button
+              size="sm"
+              variant={section === "pull_requests" ? "primary" : "ghost"}
+              className={
+                section === "pull_requests"
+                  ? "rounded-[0.75rem] bg-[#a855f7]/14 px-3 text-[#a855f7]"
+                  : "rounded-[0.75rem] px-3"
+              }
+              onPress={() => onSectionChange("pull_requests")}
             >
-              {topbarShowSpinner ? (
-                <Loader2 className="animate-spin" size={12} />
-              ) : null}
-              <span className="truncate">{topbarStatusMessage}</span>
-            </span>
-          ) : null}
+              <span className="inline-flex items-center gap-1.5">
+                <GitPullRequest size={14} />
+                <span>Pull Requests</span>
+              </span>
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-1">
+          <span className="hidden px-1 text-[10px] text-[rgb(var(--app-muted))] xl:inline">
+            {lastRefreshLabel}
+          </span>
           <Button
             isIconOnly
-            aria-label="Ajustes de cerradas"
+            aria-label={
+              section === "pull_requests"
+                ? "Refrescar Pull Requests"
+                : "Refrescar issues"
+            }
+            size="sm"
+            variant="outline"
+            onPress={onRefresh}
+          >
+            <RefreshCw className={isFetching ? "animate-spin" : ""} size={16} />
+          </Button>
+          <Button
+            isIconOnly
+            aria-label="Ajustes"
             size="sm"
             variant="outline"
             onPress={onOpenSettings}
@@ -132,25 +148,12 @@ export function DashboardHeader({
           >
             {renderThemeIcon()}
           </Button>
-          <Button
-            isIconOnly
-            aria-label="Refrescar issues"
-            size="sm"
-            variant="outline"
-            onPress={onRefresh}
-          >
-            <RefreshCw
-              className={isFetching ? "animate-spin" : ""}
-              size={16}
-            />
-          </Button>
 
           {username ? (
             <Dropdown>
               <Dropdown.Trigger className="button button--sm button--outline rounded-[0.8rem] px-2.5">
                 <span className="flex items-center gap-1.5 text-xs">
-                  <UserRound size={14} />
-                  @{username}
+                  <UserRound size={14} />@{username}
                 </span>
               </Dropdown.Trigger>
               <Dropdown.Popover>
@@ -161,14 +164,41 @@ export function DashboardHeader({
                       <span>Editar sesión</span>
                     </div>
                   </Dropdown.Item>
+                  {isDesktopClient ? (
+                    <Dropdown.Item
+                      id="export-database"
+                      onPress={onExportDatabase}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Download size={14} />
+                        <span>Exportar copia de seguridad</span>
+                      </div>
+                    </Dropdown.Item>
+                  ) : null}
+                  {isDesktopClient ? (
+                    <Dropdown.Item
+                      id="import-database"
+                      onPress={onImportDatabase}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Upload size={14} />
+                        <span>Importar copia de seguridad</span>
+                      </div>
+                    </Dropdown.Item>
+                  ) : null}
                   <Dropdown.Item
                     id="logout"
                     className="text-[rgb(var(--app-danger))]"
                     onPress={onClearSession}
                   >
                     <div className="flex items-center gap-2">
-                      <LogOut size={14} className="text-[rgb(var(--app-danger))]" />
-                      <span className="text-[rgb(var(--app-danger))]">Cerrar sesión</span>
+                      <LogOut
+                        size={14}
+                        className="text-[rgb(var(--app-danger))]"
+                      />
+                      <span className="text-[rgb(var(--app-danger))]">
+                        Cerrar sesión
+                      </span>
                     </div>
                   </Dropdown.Item>
                 </Dropdown.Menu>

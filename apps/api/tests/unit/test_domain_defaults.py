@@ -29,8 +29,8 @@ class DomainDefaultsTests(TestCase):
         if blocks[1].label != "Siguientes pasos":
             message = "Expected the second seeded block to capture next steps."
             raise AssertionError(message)
-        if blocks[0].items[0].kind != "text" or blocks[1].items[0].kind != "text":
-            message = "Expected the default seeded note items to be text rows."
+        if blocks[0].items[0].kind != "text" or blocks[1].items[0].kind != "checklist":
+            message = "Expected next-action items to default to checklist mode."
             raise AssertionError(message)
 
 

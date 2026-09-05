@@ -6,6 +6,7 @@ import json
 import sqlite3
 from collections.abc import Mapping
 from contextlib import contextmanager
+from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 from dashboard_api.domain.issues.defaults import (
@@ -14,13 +15,22 @@ from dashboard_api.domain.issues.defaults import (
     default_note_blocks,
 )
 from dashboard_api.domain.issues.models import (
+    ClosedIssueWindow,
     GitHubAssignedIssue,
+    GitHubProjectFieldValue,
+    GitHubProjectItem,
+    GitHubPullRequest,
     IssueLocalState,
     IssueLocalStateChange,
     NoteBlock,
     NoteBlockItem,
     NoteBlockKind,
     PriorityValue,
+    ProjectFieldKind,
+    PullRequestReviewDecision,
+    PullRequestState,
+    PullRequestViewerRole,
+    PullRequestWindow,
     RemoteIssueState,
     TrackedIssue,
 )
@@ -38,6 +48,22 @@ if TYPE_CHECKING:
 SQLITE_TRUE = 1
 SQLITE_FALSE = 0
 VALID_NOTE_BLOCK_KINDS = frozenset({"text", "checklist", "ordered"})
+VALID_PROJECT_FIELD_KINDS = frozenset(
+    {
+        "date",
+        "iteration",
+        "labels",
+        "milestone",
+        "multi_select",
+        "number",
+        "pull_requests",
+        "repository",
+        "reviewers",
+        "single_select",
+        "text",
+        "users",
+    },
+)
 
 CREATE_TRACKED_ISSUES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS tracked_issues (
@@ -55,6 +81,7 @@ CREATE TABLE IF NOT EXISTS tracked_issues (
     created_at TEXT,
     updated_at TEXT,
     closed_at TEXT,
+    project_items_json TEXT NOT NULL DEFAULT '[]',
     is_assigned INTEGER NOT NULL DEFAULT 1,
     priority INTEGER,
     is_pinned INTEGER NOT NULL DEFAULT 0,
@@ -78,6 +105,128 @@ CREATE INDEX IF NOT EXISTS idx_tracked_issues_repository
 ON tracked_issues (repo_full_name, issue_number)
 """
 
+CREATE_PULL_REQUESTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS pull_requests (
+    node_id TEXT PRIMARY KEY,
+    repo_full_name TEXT NOT NULL,
+    pr_number INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    html_url TEXT NOT NULL DEFAULT '',
+    remote_state TEXT NOT NULL,
+    is_draft INTEGER NOT NULL DEFAULT 0,
+    author_login TEXT NOT NULL DEFAULT '',
+    reviewer_logins_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT,
+    merged_at TEXT,
+    review_decision TEXT,
+    viewer_review_state TEXT,
+    review_requested_from_viewer INTEGER NOT NULL DEFAULT 0,
+    viewer_role TEXT,
+    comments_count INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT NOT NULL
+)
+"""
+
+CREATE_PULL_REQUESTS_UPDATED_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_pull_requests_updated
+ON pull_requests (updated_at DESC, viewer_role, remote_state)
+"""
+
+ADD_PULL_REQUEST_REVIEWERS_COLUMN_SQL = """
+ALTER TABLE pull_requests
+ADD COLUMN reviewer_logins_json TEXT NOT NULL DEFAULT '[]'
+"""
+
+CREATE_DASHBOARD_METADATA_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS dashboard_metadata (
+    metadata_key TEXT PRIMARY KEY,
+    metadata_value TEXT NOT NULL
+)
+"""
+
+UPSERT_PULL_REQUEST_SQL = """
+INSERT INTO pull_requests (
+    node_id,
+    repo_full_name,
+    pr_number,
+    title,
+    html_url,
+    remote_state,
+    is_draft,
+    author_login,
+    reviewer_logins_json,
+    updated_at,
+    merged_at,
+    review_decision,
+    viewer_review_state,
+    review_requested_from_viewer,
+    viewer_role,
+    comments_count,
+    synced_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(node_id) DO UPDATE SET
+    repo_full_name = excluded.repo_full_name,
+    pr_number = excluded.pr_number,
+    title = excluded.title,
+    html_url = excluded.html_url,
+    remote_state = excluded.remote_state,
+    is_draft = excluded.is_draft,
+    author_login = excluded.author_login,
+    reviewer_logins_json = excluded.reviewer_logins_json,
+    updated_at = excluded.updated_at,
+    merged_at = excluded.merged_at,
+    review_decision = excluded.review_decision,
+    viewer_review_state = excluded.viewer_review_state,
+    review_requested_from_viewer = excluded.review_requested_from_viewer,
+    viewer_role = excluded.viewer_role,
+    comments_count = excluded.comments_count,
+    synced_at = excluded.synced_at
+WHERE
+    pull_requests.repo_full_name IS NOT excluded.repo_full_name
+    OR pull_requests.pr_number IS NOT excluded.pr_number
+    OR pull_requests.title IS NOT excluded.title
+    OR pull_requests.html_url IS NOT excluded.html_url
+    OR pull_requests.remote_state IS NOT excluded.remote_state
+    OR pull_requests.is_draft IS NOT excluded.is_draft
+    OR pull_requests.author_login IS NOT excluded.author_login
+    OR pull_requests.reviewer_logins_json IS NOT excluded.reviewer_logins_json
+    OR pull_requests.updated_at IS NOT excluded.updated_at
+    OR pull_requests.merged_at IS NOT excluded.merged_at
+    OR pull_requests.review_decision IS NOT excluded.review_decision
+    OR pull_requests.viewer_review_state IS NOT excluded.viewer_review_state
+    OR pull_requests.review_requested_from_viewer
+        IS NOT excluded.review_requested_from_viewer
+    OR pull_requests.viewer_role IS NOT excluded.viewer_role
+    OR pull_requests.comments_count IS NOT excluded.comments_count
+"""
+
+LIST_PULL_REQUESTS_SQL = """
+SELECT *
+FROM pull_requests
+WHERE updated_at IS NULL OR updated_at >= ?
+ORDER BY COALESCE(updated_at, synced_at) DESC, repo_full_name ASC, pr_number DESC
+"""
+
+UPSERT_METADATA_SQL = """
+INSERT INTO dashboard_metadata (metadata_key, metadata_value)
+VALUES (?, ?)
+ON CONFLICT(metadata_key) DO UPDATE SET metadata_value = excluded.metadata_value
+"""
+
+GET_METADATA_SQL = """
+SELECT metadata_value
+FROM dashboard_metadata
+WHERE metadata_key = ?
+LIMIT 1
+"""
+
+PULL_REQUESTS_REFRESHED_AT_KEY = "pull_requests_refreshed_at"
+
+ADD_PROJECT_ITEMS_COLUMN_SQL = """
+ALTER TABLE tracked_issues
+ADD COLUMN project_items_json TEXT NOT NULL DEFAULT '[]'
+"""
+
 UPSERT_REMOTE_ISSUE_SQL = """
 INSERT INTO tracked_issues (
     issue_key,
@@ -94,11 +243,12 @@ INSERT INTO tracked_issues (
     created_at,
     updated_at,
     closed_at,
+    project_items_json,
     is_assigned,
     note_blocks_json,
     first_seen_at,
     synced_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(issue_key) DO UPDATE SET
     github_id = excluded.github_id,
     repo_full_name = excluded.repo_full_name,
@@ -113,6 +263,10 @@ ON CONFLICT(issue_key) DO UPDATE SET
     created_at = excluded.created_at,
     updated_at = excluded.updated_at,
     closed_at = excluded.closed_at,
+    project_items_json = CASE
+        WHEN ? THEN tracked_issues.project_items_json
+        ELSE excluded.project_items_json
+    END,
     is_assigned = excluded.is_assigned,
     synced_at = excluded.synced_at
 """
@@ -230,6 +384,21 @@ def _read_bool(
     return value if isinstance(value, bool) else bool(value)
 
 
+def _deserialize_string_tuple(raw_value: object) -> tuple[str, ...]:
+    """Deserialize a JSON list into unique non-empty strings."""
+    if not isinstance(raw_value, str):
+        return ()
+    try:
+        values = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(values, list):
+        return ()
+    return tuple(
+        dict.fromkeys(value for value in values if isinstance(value, str) and value)
+    )
+
+
 def _serialize_note_blocks(note_blocks: tuple[NoteBlock, ...]) -> str:
     """Serialize domain note blocks into a compact JSON document."""
     serialized_blocks = [
@@ -249,6 +418,190 @@ def _serialize_note_blocks(note_blocks: tuple[NoteBlock, ...]) -> str:
         for note_block in note_blocks
     ]
     return json.dumps(serialized_blocks, separators=(",", ":"))
+
+
+def _serialize_project_items(project_items: tuple[GitHubProjectItem, ...]) -> str:
+    """Serialize GitHub Projects metadata into a compact JSON document."""
+    serialized_items = [
+        {
+            "fields": [
+                {
+                    "fieldId": field.field_id,
+                    "fieldName": field.field_name,
+                    "kind": field.kind,
+                    "value": field.value,
+                }
+                for field in project_item.fields
+            ],
+            "projectId": project_item.project_id,
+            "projectNumber": project_item.project_number,
+            "projectTitle": project_item.project_title,
+            "projectUrl": project_item.project_url,
+            "linkedPullRequests": [
+                {
+                    "authorLogin": pull_request.author_login,
+                    "reviewerLogins": list(pull_request.reviewer_logins),
+                    "commentsCount": pull_request.comments_count,
+                    "htmlUrl": pull_request.html_url,
+                    "isDraft": pull_request.is_draft,
+                    "mergedAt": pull_request.merged_at,
+                    "nodeId": pull_request.node_id,
+                    "number": pull_request.number,
+                    "repositoryFullName": pull_request.repository_full_name,
+                    "reviewDecision": pull_request.review_decision,
+                    "reviewRequestedFromViewer": (
+                        pull_request.review_requested_from_viewer
+                    ),
+                    "state": pull_request.state,
+                    "title": pull_request.title,
+                    "updatedAt": pull_request.updated_at,
+                    "viewerReviewState": pull_request.viewer_review_state,
+                    "viewerRole": pull_request.viewer_role,
+                }
+                for pull_request in project_item.linked_pull_requests
+            ],
+        }
+        for project_item in project_items
+    ]
+    return json.dumps(serialized_items, separators=(",", ":"))
+
+
+def _deserialize_project_items(raw_json: str) -> tuple[GitHubProjectItem, ...]:
+    """Deserialize stored GitHub Projects metadata."""
+    try:
+        decoded_payload = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return ()
+
+    if not isinstance(decoded_payload, list):
+        return ()
+
+    project_items: list[GitHubProjectItem] = []
+    for raw_project_item in decoded_payload:
+        project_payload = _as_mapping(raw_project_item)
+        if project_payload is None:
+            continue
+
+        project_id = _read_text(project_payload, "projectId")
+        project_title = _read_text(project_payload, "projectTitle")
+        if not project_id or not project_title:
+            continue
+
+        fields: list[GitHubProjectFieldValue] = []
+        raw_fields = project_payload.get("fields")
+        if isinstance(raw_fields, list):
+            for raw_field in raw_fields:
+                field_payload = _as_mapping(raw_field)
+                if field_payload is None:
+                    continue
+                kind = _read_text(field_payload, "kind")
+                field_id = _read_text(field_payload, "fieldId")
+                field_name = _read_text(field_payload, "fieldName")
+                value = _read_text(field_payload, "value")
+                if (
+                    kind not in VALID_PROJECT_FIELD_KINDS
+                    or not field_id
+                    or not field_name
+                    or not value
+                ):
+                    continue
+                fields.append(
+                    GitHubProjectFieldValue(
+                        field_id=field_id,
+                        field_name=field_name,
+                        kind=cast("ProjectFieldKind", kind),
+                        value=value,
+                    ),
+                )
+
+        raw_project_number = project_payload.get("projectNumber", 0)
+        project_number = (
+            raw_project_number if isinstance(raw_project_number, int) else 0
+        )
+        project_items.append(
+            GitHubProjectItem(
+                project_id=project_id,
+                project_number=project_number,
+                project_title=project_title,
+                project_url=_read_text(project_payload, "projectUrl"),
+                fields=tuple(fields),
+                linked_pull_requests=_deserialize_linked_pull_requests(
+                    project_payload.get("linkedPullRequests"),
+                ),
+            ),
+        )
+
+    return tuple(project_items)
+
+
+def _deserialize_linked_pull_requests(
+    raw_payload: object,
+) -> tuple[GitHubPullRequest, ...]:
+    """Deserialize linked Pull Requests stored inside Projects metadata."""
+    if not isinstance(raw_payload, list):
+        return ()
+
+    pull_requests: list[GitHubPullRequest] = []
+    for raw_pull_request in raw_payload:
+        pull_request = _as_mapping(raw_pull_request)
+        if pull_request is None:
+            continue
+        node_id = _read_text(pull_request, "nodeId")
+        repository_full_name = _read_text(pull_request, "repositoryFullName")
+        html_url = _read_text(pull_request, "htmlUrl")
+        title = _read_text(pull_request, "title")
+        state = _read_text(pull_request, "state")
+        raw_number = pull_request.get("number")
+        if (
+            not node_id
+            or not repository_full_name
+            or not html_url
+            or not title
+            or state not in {"open", "closed", "merged"}
+            or not isinstance(raw_number, int)
+        ):
+            continue
+        raw_comments_count = pull_request.get("commentsCount")
+        pull_requests.append(
+            GitHubPullRequest(
+                node_id=node_id,
+                repository_full_name=repository_full_name,
+                number=raw_number,
+                title=title,
+                html_url=html_url,
+                state=cast("PullRequestState", state),
+                is_draft=pull_request.get("isDraft") is True,
+                author_login=_read_text(pull_request, "authorLogin"),
+                updated_at=_read_optional_text(pull_request, "updatedAt"),
+                reviewer_logins=tuple(
+                    reviewer
+                    for reviewer in pull_request.get("reviewerLogins", [])
+                    if isinstance(reviewer, str) and reviewer
+                )
+                if isinstance(pull_request.get("reviewerLogins"), list)
+                else (),
+                merged_at=_read_optional_text(pull_request, "mergedAt"),
+                review_decision=cast(
+                    "PullRequestReviewDecision | None",
+                    _read_optional_text(pull_request, "reviewDecision"),
+                ),
+                viewer_review_state=_read_optional_text(
+                    pull_request,
+                    "viewerReviewState",
+                ),
+                review_requested_from_viewer=(
+                    pull_request.get("reviewRequestedFromViewer") is True
+                ),
+                viewer_role=cast(
+                    "PullRequestViewerRole | None",
+                    _read_optional_text(pull_request, "viewerRole"),
+                ),
+                comments_count=(
+                    raw_comments_count if isinstance(raw_comments_count, int) else 0
+                ),
+            ),
+        )
+    return tuple(pull_requests)
 
 
 def _normalize_note_block_kind(
@@ -417,6 +770,32 @@ def _row_to_tracked_issue(row: sqlite3.Row) -> TrackedIssue:
         local_state=local_state,
         first_seen_at=row["first_seen_at"],
         synced_at=row["synced_at"],
+        project_items=_deserialize_project_items(row["project_items_json"]),
+    )
+
+
+def _row_to_pull_request(row: sqlite3.Row) -> GitHubPullRequest:
+    """Map a SQLite row into cached Pull Request activity."""
+    return GitHubPullRequest(
+        node_id=row["node_id"],
+        repository_full_name=row["repo_full_name"],
+        number=int(row["pr_number"]),
+        title=row["title"],
+        html_url=row["html_url"],
+        state=cast("PullRequestState", row["remote_state"]),
+        is_draft=bool(row["is_draft"]),
+        author_login=row["author_login"],
+        updated_at=row["updated_at"],
+        reviewer_logins=_deserialize_string_tuple(row["reviewer_logins_json"]),
+        merged_at=row["merged_at"],
+        review_decision=cast(
+            "PullRequestReviewDecision | None",
+            row["review_decision"],
+        ),
+        viewer_review_state=row["viewer_review_state"],
+        review_requested_from_viewer=bool(row["review_requested_from_viewer"]),
+        viewer_role=cast("PullRequestViewerRole | None", row["viewer_role"]),
+        comments_count=int(row["comments_count"]),
     )
 
 
@@ -431,9 +810,29 @@ class SqliteTrackedIssueRepository:
         """Create the tracked issues schema when it does not yet exist."""
         default_blocks_json = _serialize_note_blocks(default_note_blocks())
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(CREATE_TRACKED_ISSUES_TABLE_SQL)
+            connection.execute(CREATE_PULL_REQUESTS_TABLE_SQL)
+            connection.execute(CREATE_DASHBOARD_METADATA_TABLE_SQL)
+            existing_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(tracked_issues)",
+                ).fetchall()
+            }
+            if "project_items_json" not in existing_columns:
+                connection.execute(ADD_PROJECT_ITEMS_COLUMN_SQL)
+            existing_pull_request_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(pull_requests)",
+                ).fetchall()
+            }
+            if "reviewer_logins_json" not in existing_pull_request_columns:
+                connection.execute(ADD_PULL_REQUEST_REVIEWERS_COLUMN_SQL)
             connection.execute(CREATE_ASSIGNED_INDEX_SQL)
             connection.execute(CREATE_REPOSITORY_INDEX_SQL)
+            connection.execute(CREATE_PULL_REQUESTS_UPDATED_INDEX_SQL)
             connection.execute(
                 DELETE_UNASSIGNED_DEFAULT_ROWS_SQL,
                 (default_blocks_json,),
@@ -442,20 +841,25 @@ class SqliteTrackedIssueRepository:
     def replace_remote_projection(
         self,
         remote_issues: tuple[GitHubAssignedIssue, ...],
+        *,
+        preserve_project_items: bool = False,
     ) -> None:
         """Replace the remote issue projection with the latest assigned feed."""
         refreshed_at = utc_now_iso()
         default_blocks_json = _serialize_note_blocks(default_note_blocks())
+        issue_rows = tuple(
+            self._remote_issue_values(
+                remote_issue=remote_issue,
+                default_blocks_json=default_blocks_json,
+                preserve_project_items=preserve_project_items,
+                refreshed_at=refreshed_at,
+            )
+            for remote_issue in remote_issues
+        )
 
         with self._connect() as connection:
             connection.execute("UPDATE tracked_issues SET is_assigned = 0")
-            for remote_issue in remote_issues:
-                self._upsert_remote_issue(
-                    connection=connection,
-                    remote_issue=remote_issue,
-                    default_blocks_json=default_blocks_json,
-                    refreshed_at=refreshed_at,
-                )
+            connection.executemany(UPSERT_REMOTE_ISSUE_SQL, issue_rows)
 
             connection.execute(
                 DELETE_UNASSIGNED_DEFAULT_ROWS_SQL,
@@ -464,20 +868,24 @@ class SqliteTrackedIssueRepository:
 
     def list_visible_issues(
         self,
-        closed_window_months: int | None,
+        closed_window: ClosedIssueWindow | None,
     ) -> tuple[TrackedIssue, ...]:
         """List issues visible for the selected closed-issue filter."""
         with self._connect() as connection:
-            if closed_window_months is None:
+            if closed_window is None:
                 rows = connection.execute(LIST_VISIBLE_ISSUES_SQL).fetchall()
             else:
-                cutoff_timestamp = (
-                    subtract_months(
-                        moment=utc_now(),
-                        months=closed_window_months,
+                if closed_window.unit == "days":
+                    cutoff = utc_now() - timedelta(days=closed_window.amount)
+                else:
+                    months = (
+                        closed_window.amount * 12
+                        if closed_window.unit == "years"
+                        else closed_window.amount
                     )
-                    .isoformat(timespec="seconds")
-                    .replace("+00:00", "Z")
+                    cutoff = subtract_months(moment=utc_now(), months=months)
+                cutoff_timestamp = cutoff.isoformat(timespec="seconds").replace(
+                    "+00:00", "Z"
                 )
                 rows = connection.execute(
                     LIST_VISIBLE_RECENTLY_CLOSED_ISSUES_SQL,
@@ -485,6 +893,81 @@ class SqliteTrackedIssueRepository:
                 ).fetchall()
 
         return tuple(_row_to_tracked_issue(row) for row in rows)
+
+    def replace_pull_requests(
+        self,
+        pull_requests: tuple[GitHubPullRequest, ...],
+    ) -> None:
+        """Atomically replace the cached Pull Request projection."""
+        refreshed_at = utc_now_iso()
+        pull_request_rows = tuple(
+            (
+                pull_request.node_id,
+                pull_request.repository_full_name,
+                pull_request.number,
+                pull_request.title,
+                pull_request.html_url,
+                pull_request.state,
+                SQLITE_TRUE if pull_request.is_draft else SQLITE_FALSE,
+                pull_request.author_login,
+                json.dumps(pull_request.reviewer_logins, separators=(",", ":")),
+                pull_request.updated_at,
+                pull_request.merged_at,
+                pull_request.review_decision,
+                pull_request.viewer_review_state,
+                (
+                    SQLITE_TRUE
+                    if pull_request.review_requested_from_viewer
+                    else SQLITE_FALSE
+                ),
+                pull_request.viewer_role,
+                pull_request.comments_count,
+                refreshed_at,
+            )
+            for pull_request in pull_requests
+        )
+        with self._connect() as connection:
+            connection.executemany(UPSERT_PULL_REQUEST_SQL, pull_request_rows)
+            if pull_requests:
+                placeholders = ", ".join("?" for _ in pull_requests)
+                connection.execute(
+                    f"DELETE FROM pull_requests WHERE node_id NOT IN ({placeholders})",  # noqa: S608
+                    tuple(pull_request.node_id for pull_request in pull_requests),
+                )
+            else:
+                connection.execute("DELETE FROM pull_requests")
+            connection.execute(
+                UPSERT_METADATA_SQL,
+                (PULL_REQUESTS_REFRESHED_AT_KEY, refreshed_at),
+            )
+
+    def list_pull_requests(
+        self,
+        window: PullRequestWindow,
+    ) -> tuple[GitHubPullRequest, ...]:
+        """List cached Pull Requests updated inside the requested window."""
+        if window.unit == "days":
+            cutoff = utc_now() - timedelta(days=window.amount)
+        else:
+            months = window.amount * 12 if window.unit == "years" else window.amount
+            cutoff = subtract_months(moment=utc_now(), months=months)
+        cutoff_timestamp = cutoff.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                LIST_PULL_REQUESTS_SQL,
+                (cutoff_timestamp,),
+            ).fetchall()
+        return tuple(_row_to_pull_request(row) for row in rows)
+
+    def get_pull_requests_refreshed_at(self) -> str | None:
+        """Return the timestamp of the latest successful PR refresh."""
+        with self._connect() as connection:
+            row = connection.execute(
+                GET_METADATA_SQL,
+                (PULL_REQUESTS_REFRESHED_AT_KEY,),
+            ).fetchone()
+        return str(row["metadata_value"]) if row is not None else None
 
     def get_tracked_issue(self, issue_key: str) -> TrackedIssue | None:
         """Return one tracked issue when it is already persisted."""
@@ -536,8 +1019,10 @@ class SqliteTrackedIssueRepository:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         """Open a SQLite connection configured with row access by name."""
-        connection = sqlite3.connect(self._database_path)
+        connection = sqlite3.connect(self._database_path, timeout=5)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA synchronous = NORMAL")
         try:
             yield connection
             connection.commit()
@@ -547,40 +1032,40 @@ class SqliteTrackedIssueRepository:
         finally:
             connection.close()
 
-    def _upsert_remote_issue(
+    def _remote_issue_values(
         self,
-        connection: sqlite3.Connection,
         remote_issue: GitHubAssignedIssue,
         default_blocks_json: str,
         refreshed_at: str,
-    ) -> None:
-        """Upsert one GitHub issue into the tracked-issues projection."""
+        *,
+        preserve_project_items: bool,
+    ) -> tuple[object, ...]:
+        """Build one row for the batched remote issue upsert."""
         issue_key = build_issue_key(
             repository_full_name=remote_issue.repository_full_name,
             issue_number=remote_issue.issue_number,
         )
-        connection.execute(
-            UPSERT_REMOTE_ISSUE_SQL,
-            (
-                issue_key,
-                remote_issue.github_id,
-                remote_issue.repository_full_name,
-                remote_issue.repository_name,
-                remote_issue.repository_owner_login,
-                remote_issue.repository_owner_avatar_url,
-                remote_issue.issue_number,
-                remote_issue.remote_state,
-                remote_issue.title,
-                remote_issue.body_markdown,
-                remote_issue.html_url,
-                remote_issue.created_at,
-                remote_issue.updated_at,
-                remote_issue.closed_at,
-                SQLITE_TRUE,
-                default_blocks_json,
-                refreshed_at,
-                refreshed_at,
-            ),
+        return (
+            issue_key,
+            remote_issue.github_id,
+            remote_issue.repository_full_name,
+            remote_issue.repository_name,
+            remote_issue.repository_owner_login,
+            remote_issue.repository_owner_avatar_url,
+            remote_issue.issue_number,
+            remote_issue.remote_state,
+            remote_issue.title,
+            remote_issue.body_markdown,
+            remote_issue.html_url,
+            remote_issue.created_at,
+            remote_issue.updated_at,
+            remote_issue.closed_at,
+            _serialize_project_items(remote_issue.project_items),
+            SQLITE_TRUE,
+            default_blocks_json,
+            refreshed_at,
+            refreshed_at,
+            SQLITE_TRUE if preserve_project_items else SQLITE_FALSE,
         )
 
     def _ensure_tracked_issue(

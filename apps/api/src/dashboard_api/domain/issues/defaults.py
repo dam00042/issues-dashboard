@@ -40,7 +40,7 @@ def default_note_blocks() -> tuple[NoteBlock, ...]:
             items=(
                 NoteBlockItem(
                     id=NEXT_ACTION_ITEM_ID,
-                    kind="text",
+                    kind="checklist",
                     text="",
                 ),
             ),
