@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import timedelta
@@ -34,6 +33,7 @@ from dashboard_api.domain.issues.models import (
     RemoteIssueState,
     TrackedIssue,
 )
+from dashboard_api.infrastructure.persistence.sqlite_database import SqliteDatabase
 from dashboard_api.shared.time import (
     subtract_months,
     utc_now,
@@ -41,6 +41,7 @@ from dashboard_api.shared.time import (
 )
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Iterator
     from pathlib import Path
 
@@ -200,6 +201,48 @@ WHERE
     OR pull_requests.comments_count IS NOT excluded.comments_count
 """
 
+UPSERT_LINKED_PULL_REQUEST_SQL = """
+INSERT INTO pull_requests (
+    node_id,
+    repo_full_name,
+    pr_number,
+    title,
+    html_url,
+    remote_state,
+    is_draft,
+    author_login,
+    reviewer_logins_json,
+    updated_at,
+    merged_at,
+    review_decision,
+    viewer_review_state,
+    review_requested_from_viewer,
+    viewer_role,
+    comments_count,
+    synced_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(node_id) DO UPDATE SET
+    repo_full_name = excluded.repo_full_name,
+    pr_number = excluded.pr_number,
+    title = excluded.title,
+    html_url = excluded.html_url,
+    remote_state = excluded.remote_state,
+    is_draft = excluded.is_draft,
+    author_login = excluded.author_login,
+    updated_at = excluded.updated_at,
+    merged_at = excluded.merged_at
+WHERE
+    pull_requests.repo_full_name IS NOT excluded.repo_full_name
+    OR pull_requests.pr_number IS NOT excluded.pr_number
+    OR pull_requests.title IS NOT excluded.title
+    OR pull_requests.html_url IS NOT excluded.html_url
+    OR pull_requests.remote_state IS NOT excluded.remote_state
+    OR pull_requests.is_draft IS NOT excluded.is_draft
+    OR pull_requests.author_login IS NOT excluded.author_login
+    OR pull_requests.updated_at IS NOT excluded.updated_at
+    OR pull_requests.merged_at IS NOT excluded.merged_at
+"""
+
 LIST_PULL_REQUESTS_SQL = """
 SELECT *
 FROM pull_requests
@@ -221,6 +264,8 @@ LIMIT 1
 """
 
 PULL_REQUESTS_REFRESHED_AT_KEY = "pull_requests_refreshed_at"
+ISSUES_REFRESHED_AT_KEY = "issues_refreshed_at"
+NORMALIZED_PROJECTIONS_BACKFILLED_KEY = "normalized_projections_backfilled_v2"
 
 ADD_PROJECT_ITEMS_COLUMN_SQL = """
 ALTER TABLE tracked_issues
@@ -269,6 +314,58 @@ ON CONFLICT(issue_key) DO UPDATE SET
     END,
     is_assigned = excluded.is_assigned,
     synced_at = excluded.synced_at
+WHERE
+    tracked_issues.github_id IS NOT excluded.github_id
+    OR tracked_issues.repo_full_name IS NOT excluded.repo_full_name
+    OR tracked_issues.repo_name IS NOT excluded.repo_name
+    OR tracked_issues.repo_owner_login IS NOT excluded.repo_owner_login
+    OR tracked_issues.repo_owner_avatar_url IS NOT excluded.repo_owner_avatar_url
+    OR tracked_issues.issue_number IS NOT excluded.issue_number
+    OR tracked_issues.remote_state IS NOT excluded.remote_state
+    OR tracked_issues.title IS NOT excluded.title
+    OR tracked_issues.body_markdown IS NOT excluded.body_markdown
+    OR tracked_issues.html_url IS NOT excluded.html_url
+    OR tracked_issues.created_at IS NOT excluded.created_at
+    OR tracked_issues.updated_at IS NOT excluded.updated_at
+    OR tracked_issues.closed_at IS NOT excluded.closed_at
+    OR tracked_issues.is_assigned IS NOT excluded.is_assigned
+    OR (? = 0 AND tracked_issues.project_items_json IS NOT excluded.project_items_json)
+"""
+
+UPSERT_PROJECT_VALUE_SQL = """
+INSERT INTO issue_project_values (
+    issue_key,
+    project_id,
+    project_number,
+    project_title,
+    project_url,
+    field_id,
+    field_name,
+    normalized_field_name,
+    field_kind,
+    field_value
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(issue_key, project_id, field_id, field_value) DO UPDATE SET
+    project_number = excluded.project_number,
+    project_title = excluded.project_title,
+    project_url = excluded.project_url,
+    field_name = excluded.field_name,
+    normalized_field_name = excluded.normalized_field_name,
+    field_kind = excluded.field_kind
+"""
+
+INSERT_ISSUE_PULL_REQUEST_SQL = """
+INSERT OR IGNORE INTO issue_pull_requests (
+    issue_key,
+    pull_request_node_id
+) VALUES (?, ?)
+"""
+
+INSERT_PULL_REQUEST_REVIEWER_SQL = """
+INSERT OR IGNORE INTO pull_request_reviewers (
+    pull_request_node_id,
+    reviewer_login
+) VALUES (?, ?)
 """
 
 INSERT_MISSING_TRACKED_ISSUE_SQL = """
@@ -805,6 +902,12 @@ class SqliteTrackedIssueRepository:
     def __init__(self, database_path: Path) -> None:
         """Store the SQLite database path."""
         self._database_path = database_path
+        self._database = SqliteDatabase(database_path)
+
+    @property
+    def database(self) -> SqliteDatabase:
+        """Return the shared low-level database service."""
+        return self._database
 
     def initialize_schema(self) -> None:
         """Create the tracked issues schema when it does not yet exist."""
@@ -837,6 +940,8 @@ class SqliteTrackedIssueRepository:
                 DELETE_UNASSIGNED_DEFAULT_ROWS_SQL,
                 (default_blocks_json,),
             )
+        self._database.migrate()
+        self._backfill_normalized_projections()
 
     def replace_remote_projection(
         self,
@@ -857,9 +962,58 @@ class SqliteTrackedIssueRepository:
             for remote_issue in remote_issues
         )
 
+        issue_keys = tuple(
+            build_issue_key(
+                repository_full_name=remote_issue.repository_full_name,
+                issue_number=remote_issue.issue_number,
+            )
+            for remote_issue in remote_issues
+        )
+
         with self._connect() as connection:
-            connection.execute("UPDATE tracked_issues SET is_assigned = 0")
+            connection.execute(
+                "CREATE TEMP TABLE refreshed_issue_keys (issue_key TEXT PRIMARY KEY)",
+            )
+            connection.executemany(
+                "INSERT INTO refreshed_issue_keys (issue_key) VALUES (?)",
+                ((issue_key,) for issue_key in issue_keys),
+            )
+            existing_project_json = {
+                str(row["issue_key"]): str(row["project_items_json"])
+                for row in connection.execute(
+                    "SELECT tracked_issues.issue_key, project_items_json "
+                    "FROM tracked_issues INNER JOIN refreshed_issue_keys "
+                    "ON refreshed_issue_keys.issue_key = tracked_issues.issue_key",
+                ).fetchall()
+            }
+            changed_project_issues = tuple(
+                remote_issue
+                for remote_issue, issue_key, issue_row in zip(
+                    remote_issues,
+                    issue_keys,
+                    issue_rows,
+                    strict=True,
+                )
+                if existing_project_json.get(issue_key) != issue_row[14]
+            )
             connection.executemany(UPSERT_REMOTE_ISSUE_SQL, issue_rows)
+            connection.execute(
+                "UPDATE tracked_issues SET is_assigned = 0 "
+                "WHERE is_assigned = 1 AND issue_key NOT IN "
+                "(SELECT issue_key FROM refreshed_issue_keys)",
+            )
+            connection.execute("DROP TABLE refreshed_issue_keys")
+
+            if not preserve_project_items:
+                self._replace_normalized_project_data(
+                    connection,
+                    changed_project_issues,
+                )
+
+            connection.execute(
+                UPSERT_METADATA_SQL,
+                (ISSUES_REFRESHED_AT_KEY, refreshed_at),
+            )
 
             connection.execute(
                 DELETE_UNASSIGNED_DEFAULT_ROWS_SQL,
@@ -927,7 +1081,34 @@ class SqliteTrackedIssueRepository:
             for pull_request in pull_requests
         )
         with self._connect() as connection:
+            existing_reviewer_json = {
+                str(row["node_id"]): str(row["reviewer_logins_json"])
+                for row in connection.execute(
+                    "SELECT node_id, reviewer_logins_json FROM pull_requests",
+                ).fetchall()
+            }
+            changed_reviewers = tuple(
+                pull_request
+                for pull_request, row in zip(
+                    pull_requests,
+                    pull_request_rows,
+                    strict=True,
+                )
+                if existing_reviewer_json.get(pull_request.node_id) != row[8]
+            )
             connection.executemany(UPSERT_PULL_REQUEST_SQL, pull_request_rows)
+            connection.executemany(
+                "DELETE FROM pull_request_reviewers WHERE pull_request_node_id = ?",
+                ((pull_request.node_id,) for pull_request in changed_reviewers),
+            )
+            connection.executemany(
+                INSERT_PULL_REQUEST_REVIEWER_SQL,
+                (
+                    (pull_request.node_id, reviewer_login)
+                    for pull_request in changed_reviewers
+                    for reviewer_login in pull_request.reviewer_logins
+                ),
+            )
             if pull_requests:
                 placeholders = ", ".join("?" for _ in pull_requests)
                 connection.execute(
@@ -966,6 +1147,15 @@ class SqliteTrackedIssueRepository:
             row = connection.execute(
                 GET_METADATA_SQL,
                 (PULL_REQUESTS_REFRESHED_AT_KEY,),
+            ).fetchone()
+        return str(row["metadata_value"]) if row is not None else None
+
+    def get_issues_refreshed_at(self) -> str | None:
+        """Return when assigned issues were last refreshed successfully."""
+        with self._connect() as connection:
+            row = connection.execute(
+                GET_METADATA_SQL,
+                (ISSUES_REFRESHED_AT_KEY,),
             ).fetchone()
         return str(row["metadata_value"]) if row is not None else None
 
@@ -1019,18 +1209,8 @@ class SqliteTrackedIssueRepository:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         """Open a SQLite connection configured with row access by name."""
-        connection = sqlite3.connect(self._database_path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 5000")
-        connection.execute("PRAGMA synchronous = NORMAL")
-        try:
+        with self._database.connect() as connection:
             yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
 
     def _remote_issue_values(
         self,
@@ -1066,6 +1246,171 @@ class SqliteTrackedIssueRepository:
             refreshed_at,
             refreshed_at,
             SQLITE_TRUE if preserve_project_items else SQLITE_FALSE,
+            SQLITE_TRUE if preserve_project_items else SQLITE_FALSE,
+        )
+
+    def _replace_normalized_project_data(
+        self,
+        connection: sqlite3.Connection,
+        remote_issues: tuple[GitHubAssignedIssue, ...],
+    ) -> None:
+        """Replace structured Project fields and linked PR relationships."""
+        issue_keys = tuple(
+            build_issue_key(
+                repository_full_name=remote_issue.repository_full_name,
+                issue_number=remote_issue.issue_number,
+            )
+            for remote_issue in remote_issues
+        )
+        connection.executemany(
+            "DELETE FROM issue_project_values WHERE issue_key = ?",
+            ((issue_key,) for issue_key in issue_keys),
+        )
+        connection.executemany(
+            "DELETE FROM issue_pull_requests WHERE issue_key = ?",
+            ((issue_key,) for issue_key in issue_keys),
+        )
+
+        project_rows: list[tuple[object, ...]] = []
+        linked_pull_requests: dict[str, GitHubPullRequest] = {}
+        relationship_rows: list[tuple[str, str]] = []
+        for remote_issue, issue_key in zip(remote_issues, issue_keys, strict=True):
+            for project_item in remote_issue.project_items:
+                project_rows.extend(
+                    (
+                        issue_key,
+                        project_item.project_id,
+                        project_item.project_number,
+                        project_item.project_title,
+                        project_item.project_url,
+                        field.field_id,
+                        field.field_name,
+                        field.field_name.casefold(),
+                        field.kind,
+                        field.value,
+                    )
+                    for field in project_item.fields
+                )
+                for pull_request in project_item.linked_pull_requests:
+                    linked_pull_requests[pull_request.node_id] = pull_request
+                    relationship_rows.append((issue_key, pull_request.node_id))
+
+        connection.executemany(UPSERT_PROJECT_VALUE_SQL, project_rows)
+        connection.executemany(
+            UPSERT_LINKED_PULL_REQUEST_SQL,
+            (
+                self._pull_request_values(pull_request, utc_now_iso())
+                for pull_request in linked_pull_requests.values()
+            ),
+        )
+        connection.executemany(
+            INSERT_PULL_REQUEST_REVIEWER_SQL,
+            (
+                (pull_request.node_id, reviewer_login)
+                for pull_request in linked_pull_requests.values()
+                for reviewer_login in pull_request.reviewer_logins
+            ),
+        )
+        connection.executemany(
+            INSERT_ISSUE_PULL_REQUEST_SQL,
+            relationship_rows,
+        )
+
+    def _backfill_normalized_projections(self) -> None:
+        """Populate v2 projections once from data stored by older releases."""
+        with self._connect() as connection:
+            completed = connection.execute(
+                GET_METADATA_SQL,
+                (NORMALIZED_PROJECTIONS_BACKFILLED_KEY,),
+            ).fetchone()
+            if completed is not None:
+                return
+
+            project_rows: list[tuple[object, ...]] = []
+            linked_pull_requests: dict[str, GitHubPullRequest] = {}
+            relationship_rows: list[tuple[str, str]] = []
+            for row in connection.execute(
+                "SELECT issue_key, project_items_json FROM tracked_issues",
+            ).fetchall():
+                issue_key = str(row["issue_key"])
+                for project_item in _deserialize_project_items(
+                    str(row["project_items_json"]),
+                ):
+                    project_rows.extend(
+                        (
+                            issue_key,
+                            project_item.project_id,
+                            project_item.project_number,
+                            project_item.project_title,
+                            project_item.project_url,
+                            field.field_id,
+                            field.field_name,
+                            field.field_name.casefold(),
+                            field.kind,
+                            field.value,
+                        )
+                        for field in project_item.fields
+                    )
+                    for pull_request in project_item.linked_pull_requests:
+                        linked_pull_requests[pull_request.node_id] = pull_request
+                        relationship_rows.append((issue_key, pull_request.node_id))
+
+            connection.executemany(UPSERT_PROJECT_VALUE_SQL, project_rows)
+            connection.executemany(
+                UPSERT_LINKED_PULL_REQUEST_SQL,
+                (
+                    self._pull_request_values(pull_request, utc_now_iso())
+                    for pull_request in linked_pull_requests.values()
+                ),
+            )
+            connection.executemany(
+                INSERT_ISSUE_PULL_REQUEST_SQL,
+                relationship_rows,
+            )
+
+            for row in connection.execute(
+                "SELECT node_id, reviewer_logins_json FROM pull_requests",
+            ).fetchall():
+                node_id = str(row["node_id"])
+                connection.executemany(
+                    INSERT_PULL_REQUEST_REVIEWER_SQL,
+                    (
+                        (node_id, reviewer_login)
+                        for reviewer_login in _deserialize_string_tuple(
+                            row["reviewer_logins_json"],
+                        )
+                    ),
+                )
+
+            connection.execute(
+                UPSERT_METADATA_SQL,
+                (NORMALIZED_PROJECTIONS_BACKFILLED_KEY, utc_now_iso()),
+            )
+
+    @staticmethod
+    def _pull_request_values(
+        pull_request: GitHubPullRequest,
+        refreshed_at: str,
+    ) -> tuple[object, ...]:
+        """Build one row for the Pull Request upsert."""
+        return (
+            pull_request.node_id,
+            pull_request.repository_full_name,
+            pull_request.number,
+            pull_request.title,
+            pull_request.html_url,
+            pull_request.state,
+            SQLITE_TRUE if pull_request.is_draft else SQLITE_FALSE,
+            pull_request.author_login,
+            json.dumps(pull_request.reviewer_logins, separators=(",", ":")),
+            pull_request.updated_at,
+            pull_request.merged_at,
+            pull_request.review_decision,
+            pull_request.viewer_review_state,
+            SQLITE_TRUE if pull_request.review_requested_from_viewer else SQLITE_FALSE,
+            pull_request.viewer_role,
+            pull_request.comments_count,
+            refreshed_at,
         )
 
     def _ensure_tracked_issue(

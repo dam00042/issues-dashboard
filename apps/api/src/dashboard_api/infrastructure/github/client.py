@@ -53,6 +53,7 @@ PULL_REQUESTS_WARNING = (
 )
 ISSUE_PROJECT_FIELDS_QUERY = """
 query IssueProjectFields($ids: [ID!]!) {
+  rateLimit { cost remaining resetAt }
   nodes(ids: $ids) {
     ... on Issue {
       id
@@ -108,6 +109,7 @@ query PullRequestDashboard(
   $reviewRequestedQuery: String!
   $reviewedQuery: String!
 ) {
+  rateLimit { cost remaining resetAt }
   authored: search(
     query: $authoredQuery
     type: ISSUE
@@ -277,6 +279,20 @@ def _connection_nodes(payload: Mapping[str, object], key: str) -> list[object]:
     """Read the nodes array from a GraphQL connection."""
     connection = _as_mapping(payload.get(key))
     return _as_list(connection.get("nodes")) if connection is not None else []
+
+
+def _log_graphql_rate_limit(data: Mapping[str, object], operation: str) -> None:
+    """Log GraphQL cost metadata without exposing request contents."""
+    rate_limit = _as_mapping(data.get("rateLimit"))
+    if rate_limit is None:
+        return
+    LOGGER.info(
+        "GitHub GraphQL %s cost=%s remaining=%s reset_at=%s",
+        operation,
+        _read_int(rate_limit, "cost"),
+        _read_int(rate_limit, "remaining"),
+        _read_text(rate_limit, "resetAt"),
+    )
 
 
 def _iteration_values(payload: Mapping[str, object]) -> tuple[str, ...]:
@@ -549,6 +565,8 @@ def _fetch_project_batch(
     if data is None:
         return ProjectEnrichmentResult({}, warning or PROJECT_FIELDS_WARNING)
 
+    _log_graphql_rate_limit(data, "issue-project-fields")
+
     parsed_enrichment = _parse_project_items_by_issue(data)
     return replace(parsed_enrichment, warning=warning)
 
@@ -611,6 +629,12 @@ class GitHubAssignedIssuesClient:
         self._pull_request_cache: PullRequestFetchResult | None = None
         self._pull_request_cache_window: PullRequestWindow | None = None
         self._pull_request_cache_expires_at = 0.0
+        self._client: httpx.Client | None = None
+        self._client_token = ""
+        self._issue_page_cache: dict[
+            tuple[str, str | None, int],
+            tuple[str, tuple[GitHubIssuePayload, ...]],
+        ] = {}
 
     def can_refresh(self) -> bool:
         """Return whether the configured token can refresh GitHub data."""
@@ -627,47 +651,34 @@ class GitHubAssignedIssuesClient:
         self._reset_caches_for_new_token(github_token)
 
         collected_payloads: list[GitHubIssuePayload] = []
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {github_token}",
-            "User-Agent": "github-issues-dashboard-v3",
-        }
-
-        with httpx.Client(
-            base_url=self._settings.github_api_base_url,
-            headers=headers,
-            timeout=self._settings.github_request_timeout_seconds,
-            transport=self._transport,
-        ) as client:
-            request_ranges: tuple[
-                tuple[Literal["open", "closed", "all"], str | None], ...
-            ]
-            if closed_window is None:
-                request_ranges = (("all", None),)
-            else:
-                request_ranges = (
-                    ("open", None),
-                    ("closed", _closed_issue_since(closed_window)),
-                )
-
-            for remote_state, since in request_ranges:
-                for page in range(1, self._settings.github_max_pages + 1):
-                    raw_issues = self._fetch_page(
-                        client=client,
-                        page=page,
-                        remote_state=remote_state,
-                        since=since,
-                    )
-                    collected_payloads.extend(
-                        issue for issue in raw_issues if issue.pull_request is None
-                    )
-                    if len(raw_issues) < ISSUES_PAGE_SIZE:
-                        break
-
-            enrichment = self._fetch_project_items(
-                client,
-                tuple(issue.node_id for issue in collected_payloads if issue.node_id),
+        client = self._get_client(github_token)
+        request_ranges: tuple[tuple[Literal["open", "closed", "all"], str | None], ...]
+        if closed_window is None:
+            request_ranges = (("all", None),)
+        else:
+            request_ranges = (
+                ("open", None),
+                ("closed", _closed_issue_since(closed_window)),
             )
+
+        for remote_state, since in request_ranges:
+            for page in range(1, self._settings.github_max_pages + 1):
+                raw_issues = self._fetch_page(
+                    client=client,
+                    page=page,
+                    remote_state=remote_state,
+                    since=since,
+                )
+                collected_payloads.extend(
+                    issue for issue in raw_issues if issue.pull_request is None
+                )
+                if len(raw_issues) < ISSUES_PAGE_SIZE:
+                    break
+
+        enrichment = self._fetch_project_items(
+            client,
+            tuple(issue.node_id for issue in collected_payloads if issue.node_id),
+        )
 
         issues = tuple(
             replace(
@@ -706,33 +717,23 @@ class GitHubAssignedIssuesClient:
         ):
             return self._pull_request_cache
 
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {github_token}",
-            "User-Agent": "github-issues-dashboard-v3",
-        }
         try:
-            with httpx.Client(
-                base_url=self._settings.github_api_base_url,
-                headers=headers,
-                timeout=self._settings.github_request_timeout_seconds,
-                transport=self._transport,
-            ) as client:
-                response = client.post(
-                    "/graphql",
-                    json={
-                        "query": PULL_REQUEST_DASHBOARD_QUERY,
-                        "variables": _pull_request_search_variables(
-                            resolved_window,
-                        ),
-                    },
-                )
-                if response.status_code == httpx.codes.UNAUTHORIZED:
-                    self._raise_authentication_error(response)
-                if response.status_code == httpx.codes.FORBIDDEN:
-                    return PullRequestFetchResult((), PULL_REQUESTS_WARNING)
-                response.raise_for_status()
-                payload = _as_mapping(response.json())
+            client = self._get_client(github_token)
+            response = client.post(
+                "/graphql",
+                json={
+                    "query": PULL_REQUEST_DASHBOARD_QUERY,
+                    "variables": _pull_request_search_variables(
+                        resolved_window,
+                    ),
+                },
+            )
+            if response.status_code == httpx.codes.UNAUTHORIZED:
+                self._raise_authentication_error(response)
+            if response.status_code == httpx.codes.FORBIDDEN:
+                return PullRequestFetchResult((), PULL_REQUESTS_WARNING)
+            response.raise_for_status()
+            payload = _as_mapping(response.json())
         except GitHubAuthenticationError:
             raise
         except (httpx.HTTPError, ValueError) as error:
@@ -744,6 +745,8 @@ class GitHubAssignedIssuesClient:
         data = _as_mapping(payload.get("data"))
         if data is None:
             return PullRequestFetchResult((), PULL_REQUESTS_WARNING)
+
+        _log_graphql_rate_limit(data, "pull-request-dashboard")
 
         result = PullRequestFetchResult(_parse_pull_request_dashboard(data))
         self._pull_request_cache = result
@@ -771,10 +774,16 @@ class GitHubAssignedIssuesClient:
         }
         if since is not None:
             params["since"] = since
+        cache_key = (remote_state, since, page)
+        cached_page = self._issue_page_cache.get(cache_key)
+        conditional_headers = {"If-None-Match": cached_page[0]} if cached_page else None
         response = client.get(
             "/issues",
+            headers=conditional_headers,
             params=params,
         )
+        if response.status_code == httpx.codes.NOT_MODIFIED and cached_page:
+            return cached_page[1]
         if response.status_code in {
             httpx.codes.FORBIDDEN,
             httpx.codes.UNAUTHORIZED,
@@ -785,8 +794,11 @@ class GitHubAssignedIssuesClient:
             )
 
         response.raise_for_status()
-        payload = GITHUB_ISSUES_ADAPTER.validate_python(response.json())
-        return tuple(payload)
+        payload = tuple(GITHUB_ISSUES_ADAPTER.validate_python(response.json()))
+        etag = response.headers.get("etag")
+        if etag:
+            self._issue_page_cache[cache_key] = (etag, payload)
+        return payload
 
     def _fetch_project_items(
         self,
@@ -836,6 +848,37 @@ class GitHubAssignedIssuesClient:
         self._pull_request_cache = None
         self._pull_request_cache_window = None
         self._pull_request_cache_expires_at = 0.0
+        self._issue_page_cache = {}
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+        self._client_token = ""
+
+    def _get_client(self, github_token: str) -> httpx.Client:
+        """Return one connection-pooled GitHub client for the active token."""
+        if self._client is not None and self._client_token == github_token:
+            return self._client
+        if self._client is not None:
+            self._client.close()
+        self._client = httpx.Client(
+            base_url=self._settings.github_api_base_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {github_token}",
+                "User-Agent": "github-issues-dashboard-v3",
+            },
+            timeout=self._settings.github_request_timeout_seconds,
+            transport=self._transport,
+        )
+        self._client_token = github_token
+        return self._client
+
+    def close(self) -> None:
+        """Close pooled network resources during application shutdown."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+        self._client_token = ""
 
     def _resolve_token(self) -> str:
         """Return the active GitHub token for the current runtime."""

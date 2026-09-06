@@ -2,13 +2,17 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { CheckCheck, ExternalLink, Eye, RotateCcw } from "lucide-react";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, memo, useEffect, useRef, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
 import { IssuePrioritySelector } from "@/features/issues-dashboard/components/issue-priority-selector";
 import { LinkedPullRequests } from "@/features/issues-dashboard/components/linked-pull-requests";
+import {
+  LinkedPullRequestsSkeleton,
+  NotesEditorSkeleton,
+} from "@/features/issues-dashboard/components/loading-skeletons";
 import { NotesBlockEditor } from "@/features/issues-dashboard/components/notes-block-editor";
 import { ResizeHandle } from "@/features/issues-dashboard/components/resize-handle";
 import type {
@@ -24,11 +28,15 @@ export interface CompletedBoardProps {
   activeIssue: DashboardIssue | null;
   completedIssues: DashboardIssue[];
   isSidebarCollapsed: boolean;
+  linkedPullRequestsCollapsed: boolean;
   reviewIssues: DashboardIssue[];
   selectedIssueKey: string | null;
+  sidebarWidth: number;
   onCollapseSidebar: () => void;
   onExpandSidebar: () => void;
+  onIssuePrefetch: (issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
+  onSidebarWidthChange: (width: number) => void;
   onRestoreIssue: (issueKey: string) => void;
   onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
   onReviewIssue?: (issueKey: string) => void;
@@ -89,15 +97,19 @@ function DroppableBucket({
   );
 }
 
-export function CompletedBoard({
+export const CompletedBoard = memo(function CompletedBoard({
   activeIssue,
   completedIssues,
   isSidebarCollapsed,
+  linkedPullRequestsCollapsed,
   reviewIssues,
   selectedIssueKey,
+  sidebarWidth,
   onCollapseSidebar,
   onExpandSidebar,
+  onIssuePrefetch,
   onIssueSelect,
+  onSidebarWidthChange,
   onRestoreIssue,
   onSetPriority,
   onReviewIssue,
@@ -105,11 +117,18 @@ export function CompletedBoard({
   onUpdateBlocks,
 }: CompletedBoardProps) {
   const sidebarIssue = activeIssue;
-  const [sidebarWidth, setSidebarWidth] = useState(420);
+  const [renderedSidebarWidth, setRenderedSidebarWidth] =
+    useState(sidebarWidth);
+  const sidebarWidthRef = useRef(sidebarWidth);
   const [dragState, setDragState] = useState<{
     startX: number;
     startWidth: number;
   } | null>(null);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+    setRenderedSidebarWidth(sidebarWidth);
+  }, [sidebarWidth]);
 
   useEffect(() => {
     if (!dragState) {
@@ -122,13 +141,15 @@ export function CompletedBoard({
     const handleMouseMove = (event: MouseEvent) => {
       const delta = dragState.startX - event.clientX;
       const nextWidth = Math.min(
-        750,
-        Math.max(280, dragState.startWidth + delta),
+        960,
+        Math.max(320, dragState.startWidth + delta),
       );
-      setSidebarWidth(nextWidth);
+      sidebarWidthRef.current = nextWidth;
+      setRenderedSidebarWidth(nextWidth);
     };
 
     const handleMouseUp = () => {
+      onSidebarWidthChange(Math.round(sidebarWidthRef.current));
       setDragState(null);
     };
 
@@ -139,15 +160,13 @@ export function CompletedBoard({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragState]);
+  }, [dragState, onSidebarWidthChange]);
 
   return (
     <div
       className={`flex h-full min-h-0 min-w-0 ${sidebarIssue ? "gap-0" : "gap-3"}`}
     >
-      {/* 50/50 Quadrants Area - "En revisión" and "Completadas localmente" split available space 50/50 */}
       <div className="grid flex-1 min-h-0 min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Quadrant 1: En revisión */}
         <DroppableBucket
           bucketId="review"
           count={reviewIssues.length}
@@ -168,6 +187,7 @@ export function CompletedBoard({
                 key={issue.issueKey}
                 isSelected={selectedIssueKey === issue.issueKey}
                 issue={issue}
+                onIssuePrefetch={onIssuePrefetch}
                 onIssueSelect={onIssueSelect}
                 onCompleteIssue={onCompleteIssue}
                 onRestoreIssue={onRestoreIssue}
@@ -176,7 +196,6 @@ export function CompletedBoard({
           )}
         </DroppableBucket>
 
-        {/* Quadrant 2: Completadas localmente */}
         <DroppableBucket
           bucketId="completed"
           count={completedIssues.length}
@@ -197,6 +216,7 @@ export function CompletedBoard({
                 key={issue.issueKey}
                 isSelected={selectedIssueKey === issue.issueKey}
                 issue={issue}
+                onIssuePrefetch={onIssuePrefetch}
                 onIssueSelect={onIssueSelect}
                 onRestoreIssue={onRestoreIssue}
                 onReviewIssue={onReviewIssue}
@@ -206,7 +226,6 @@ export function CompletedBoard({
         </DroppableBucket>
       </div>
 
-      {/* Shared ResizeHandle with floating collapse/expand button and drag resizer */}
       {sidebarIssue ? (
         <ResizeHandle
           isCollapsed={isSidebarCollapsed}
@@ -219,17 +238,16 @@ export function CompletedBoard({
               : (clientX) => {
                   setDragState({
                     startX: clientX,
-                    startWidth: sidebarWidth,
+                    startWidth: renderedSidebarWidth,
                   });
                 }
           }
         />
       ) : null}
 
-      {/* Detail Sidebar */}
       {!isSidebarCollapsed && sidebarIssue ? (
         <aside
-          style={{ width: `${sidebarWidth}px` }}
+          style={{ width: `${String(renderedSidebarWidth)}px` }}
           className="shrink-0 min-h-0 flex flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96 shadow-md transition-all"
         >
           <div className="border-b border-[rgb(var(--app-border))]/55 px-3.5 py-3">
@@ -288,24 +306,35 @@ export function CompletedBoard({
             ) : null}
           </div>
 
-          <LinkedPullRequests issue={sidebarIssue} />
+          {sidebarIssue.detailsLoaded ? (
+            <LinkedPullRequests
+              defaultCollapsed={linkedPullRequestsCollapsed}
+              issue={sidebarIssue}
+            />
+          ) : (
+            <LinkedPullRequestsSkeleton />
+          )}
 
           <IssuePrioritySelector
             issue={sidebarIssue}
             onSetPriority={onSetPriority}
           />
 
-          <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3.5 py-3">
-            <NotesBlockEditor
-              key={sidebarIssue.issueKey}
-              blocks={sidebarIssue.localState.noteBlocks}
-              onBlocksChange={(nextBlocks) =>
-                onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
-              }
-            />
-          </div>
+          {sidebarIssue.detailsLoaded ? (
+            <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3.5 py-3">
+              <NotesBlockEditor
+                key={sidebarIssue.issueKey}
+                blocks={sidebarIssue.localState.noteBlocks}
+                onBlocksChange={(nextBlocks) =>
+                  onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
+                }
+              />
+            </div>
+          ) : (
+            <NotesEditorSkeleton />
+          )}
         </aside>
       ) : null}
     </div>
   );
-}
+});

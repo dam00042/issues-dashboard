@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+export {};
+
 function getArgumentValue(name, fallbackValue) {
   const prefix = `--${name}=`;
   const matchedArgument = process.argv.find((argument) =>
@@ -15,14 +17,15 @@ function getArgumentValue(name, fallbackValue) {
 
 contextBridge.exposeInMainWorld("githubIssuesDesktop", {
   apiBaseUrl: getArgumentValue("api-base-url", "http://127.0.0.1:8010"),
+  runtimeSecret: getArgumentValue("runtime-secret", ""),
   clearSession: () => ipcRenderer.invoke("desktop:clear-session"),
   closeWindow: () => ipcRenderer.invoke("desktop:close-window"),
-  exportDatabase: () => ipcRenderer.invoke("desktop:export-database"),
+  exportBackup: () => ipcRenderer.invoke("desktop:export-backup"),
   getBackendStatus: () => ipcRenderer.invoke("desktop:get-backend-status"),
   getSessionStatus: () => ipcRenderer.invoke("desktop:get-session-status"),
   getWindowState: () => ipcRenderer.invoke("desktop:get-window-state"),
   getZoomFactor: () => ipcRenderer.invoke("desktop:get-zoom-factor"),
-  importDatabase: () => ipcRenderer.invoke("desktop:import-database"),
+  importBackup: () => ipcRenderer.invoke("desktop:import-backup"),
   isElectron: true,
   minimizeWindow: () => ipcRenderer.invoke("desktop:minimize-window"),
   saveSession: (payload) => ipcRenderer.invoke("desktop:save-session", payload),

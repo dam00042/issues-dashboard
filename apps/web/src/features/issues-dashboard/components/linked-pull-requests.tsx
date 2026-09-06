@@ -25,12 +25,22 @@ function getStateLabel(pullRequest: GitHubPullRequest): string {
   return "Abierta";
 }
 
-export function LinkedPullRequests({ issue }: { issue: DashboardIssue }) {
+export function LinkedPullRequests({
+  defaultCollapsed = true,
+  issue,
+}: {
+  defaultCollapsed?: boolean;
+  issue: DashboardIssue;
+}) {
   const linkedPullRequests = getLinkedPullRequests(issue);
 
   return (
     <section className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
-      <Disclosure key={issue.issueKey} className="w-full bg-transparent">
+      <Disclosure
+        key={issue.issueKey}
+        className="w-full bg-transparent"
+        defaultExpanded={!defaultCollapsed}
+      >
         <Disclosure.Heading className="m-0">
           <Disclosure.Trigger className="flex w-full items-center justify-between gap-2 rounded-[0.65rem] px-1 py-1 text-left outline-none transition hover:bg-[rgb(var(--app-surface-strong))]/65 focus-visible:ring-2 focus-visible:ring-[rgb(var(--app-accent))]/45">
             <span className="inline-flex min-w-0 items-center gap-2">

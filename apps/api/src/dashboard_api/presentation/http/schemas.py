@@ -21,6 +21,12 @@ from dashboard_api.domain.issues.models import (
     ProjectFieldKind,
     TrackedIssue,
 )
+from dashboard_api.domain.preferences.models import (
+    AutoRefreshPreferences,
+    DashboardPreferences,
+    HistoryWindowPreferences,
+    SidebarPreferences,
+)
 
 if TYPE_CHECKING:
     from dashboard_api.application.issues.service import (
@@ -29,6 +35,10 @@ if TYPE_CHECKING:
     )
     from dashboard_api.application.session.service import (
         GitHubSessionStatus,
+    )
+    from dashboard_api.application.synchronization.service import (
+        SynchronizationResult,
+        SynchronizationStatus,
     )
 
 
@@ -40,6 +50,203 @@ class CamelModel(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
+
+
+class HistoryWindowPreferencesPayload(CamelModel):
+    """Represent one configurable local history window."""
+
+    amount: int = Field(ge=1)
+    unit: Literal["days", "months", "years"]
+    unlimited: bool = False
+
+    @classmethod
+    def from_domain(cls, value: HistoryWindowPreferences) -> Self:
+        """Build a payload from domain preferences."""
+        return cls(
+            amount=value.amount,
+            unit=value.unit,
+            unlimited=value.unlimited,
+        )
+
+    def to_domain(self) -> HistoryWindowPreferences:
+        """Build domain preferences from the payload."""
+        return HistoryWindowPreferences(
+            amount=self.amount,
+            unit=self.unit,
+            unlimited=self.unlimited,
+        )
+
+
+class AutoRefreshPreferencesPayload(CamelModel):
+    """Represent the optional automatic refresh interval."""
+
+    enabled: bool = False
+    amount: int = Field(default=5, ge=1)
+    unit: Literal["minutes", "hours", "days"] = "minutes"
+
+    @classmethod
+    def from_domain(cls, value: AutoRefreshPreferences) -> Self:
+        """Build a payload from domain preferences."""
+        return cls(enabled=value.enabled, amount=value.amount, unit=value.unit)
+
+    def to_domain(self) -> AutoRefreshPreferences:
+        """Build domain preferences from the payload."""
+        return AutoRefreshPreferences(
+            enabled=self.enabled,
+            amount=self.amount,
+            unit=self.unit,
+        )
+
+
+class SidebarPreferencesPayload(CamelModel):
+    """Represent portable sidebar preferences."""
+
+    width: int = Field(default=460, ge=320, le=960)
+    collapsed: bool = False
+
+    @classmethod
+    def from_domain(cls, value: SidebarPreferences) -> Self:
+        """Build a payload from domain preferences."""
+        return cls(width=value.width, collapsed=value.collapsed)
+
+    def to_domain(self) -> SidebarPreferences:
+        """Build domain preferences from the payload."""
+        return SidebarPreferences(width=self.width, collapsed=self.collapsed)
+
+
+class DashboardPreferencesPayload(CamelModel):
+    """Represent every portable application preference."""
+
+    version: int = 1
+    theme: Literal["light", "dark", "system"] = "system"
+    zoom_factor: float = Field(default=1.0, ge=0.75, le=1.6)
+    closed_issue_history: HistoryWindowPreferencesPayload = Field(
+        default_factory=lambda: HistoryWindowPreferencesPayload(
+            amount=1,
+            unit="months",
+        ),
+    )
+    pull_request_history: HistoryWindowPreferencesPayload = Field(
+        default_factory=lambda: HistoryWindowPreferencesPayload(
+            amount=1,
+            unit="months",
+        ),
+    )
+    auto_refresh: AutoRefreshPreferencesPayload = Field(
+        default_factory=AutoRefreshPreferencesPayload,
+    )
+    sidebar: SidebarPreferencesPayload = Field(
+        default_factory=SidebarPreferencesPayload,
+    )
+    linked_pull_requests_collapsed: bool = True
+
+    @classmethod
+    def from_domain(cls, value: DashboardPreferences) -> Self:
+        """Build an HTTP payload from domain preferences."""
+        return cls(
+            version=value.version,
+            theme=value.theme,
+            zoom_factor=value.zoom_factor,
+            closed_issue_history=HistoryWindowPreferencesPayload.from_domain(
+                value.closed_issue_history,
+            ),
+            pull_request_history=HistoryWindowPreferencesPayload.from_domain(
+                value.pull_request_history,
+            ),
+            auto_refresh=AutoRefreshPreferencesPayload.from_domain(
+                value.auto_refresh,
+            ),
+            sidebar=SidebarPreferencesPayload.from_domain(value.sidebar),
+            linked_pull_requests_collapsed=(value.linked_pull_requests_collapsed),
+        )
+
+    def to_domain(self) -> DashboardPreferences:
+        """Build domain preferences from the HTTP payload."""
+        return DashboardPreferences(
+            version=self.version,
+            theme=self.theme,
+            zoom_factor=self.zoom_factor,
+            closed_issue_history=self.closed_issue_history.to_domain(),
+            pull_request_history=self.pull_request_history.to_domain(),
+            auto_refresh=self.auto_refresh.to_domain(),
+            sidebar=self.sidebar.to_domain(),
+            linked_pull_requests_collapsed=(self.linked_pull_requests_collapsed),
+        )
+
+
+class BackupPathPayload(CamelModel):
+    """Represent a desktop-selected backup filesystem path."""
+
+    path: str = Field(min_length=1)
+
+
+class BackupExportResponse(CamelModel):
+    """Describe a successfully created complete backup."""
+
+    path: str
+
+
+class BackupInspectionResponse(CamelModel):
+    """Expose safe manifest metadata before restoring a backup."""
+
+    source_account: str | None = None
+    created_at: str
+    schema_version: int
+
+
+class BackupImportResponse(CamelModel):
+    """Describe a successfully restored complete backup."""
+
+    path: str
+    source_account: str | None = None
+    created_at: str
+    schema_version: int
+    safety_backup_path: str
+
+
+class SynchronizationRequest(CamelModel):
+    """Represent the configured windows for one unified GitHub refresh."""
+
+    closed_window: str = "1m"
+    pull_request_window: str = "1m"
+
+
+class SynchronizationStatusPayload(CamelModel):
+    """Represent observable unified synchronization state."""
+
+    state: Literal["idle", "running", "succeeded", "partial"]
+    started_at: str | None = None
+    finished_at: str | None = None
+    issues_refreshed_at: str | None = None
+    pull_requests_refreshed_at: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_domain(cls, value: SynchronizationStatus) -> Self:
+        """Build a response payload from synchronization state."""
+        return cls(
+            state=value.state,
+            started_at=value.started_at,
+            finished_at=value.finished_at,
+            issues_refreshed_at=value.issues_refreshed_at,
+            pull_requests_refreshed_at=value.pull_requests_refreshed_at,
+            warnings=list(value.warnings),
+        )
+
+
+class SynchronizationResponse(CamelModel):
+    """Describe whether a synchronization request started."""
+
+    started: bool
+    status: SynchronizationStatusPayload
+
+    @classmethod
+    def from_domain(cls, value: SynchronizationResult) -> Self:
+        """Build a response payload from a synchronization result."""
+        return cls(
+            started=value.started,
+            status=SynchronizationStatusPayload.from_domain(value.status),
+        )
 
 
 class NoteBlockItemPayload(CamelModel):
@@ -253,6 +460,21 @@ class ProjectItemPayload(CamelModel):
             ],
         )
 
+    @classmethod
+    def summary_from_domain(cls, project_item: GitHubProjectItem) -> Self:
+        """Build filter metadata without repeating linked PR details."""
+        return cls(
+            project_id=project_item.project_id,
+            project_number=project_item.project_number,
+            project_title=project_item.project_title,
+            project_url=project_item.project_url,
+            fields=[
+                ProjectFieldValuePayload.from_domain(field)
+                for field in project_item.fields
+            ],
+            linked_pull_requests=[],
+        )
+
 
 class PullRequestDashboardResponse(CamelModel):
     """Represent the on-demand Pull Request dashboard response."""
@@ -294,9 +516,15 @@ class IssuePayload(CamelModel):
     first_seen_at: str
     synced_at: str
     project_items: list[ProjectItemPayload]
+    details_loaded: bool = True
 
     @classmethod
-    def from_domain(cls, issue: TrackedIssue) -> Self:
+    def from_domain(
+        cls,
+        issue: TrackedIssue,
+        *,
+        compact: bool = False,
+    ) -> Self:
         """Build an issue payload from a tracked issue."""
         return cls(
             issue_key=issue.issue_key,
@@ -305,18 +533,39 @@ class IssuePayload(CamelModel):
             number=issue.issue_number,
             remote_state=issue.remote_state,
             title=issue.title,
-            body=issue.body_markdown,
+            body="" if compact else issue.body_markdown,
             html_url=issue.html_url,
             created_at=issue.created_at,
             updated_at=issue.updated_at,
             closed_at=issue.closed_at,
-            local_state=IssueLocalStatePayload.from_domain(issue.local_state),
+            local_state=(
+                IssueLocalStatePayload.from_domain(issue.local_state)
+                if not compact
+                else IssueLocalStatePayload(
+                    priority=issue.local_state.priority,
+                    is_pinned=issue.local_state.is_pinned,
+                    local_completed_at=issue.local_state.local_completed_at,
+                    last_priority_before_completion=(
+                        issue.local_state.last_priority_before_completion
+                    ),
+                    last_pinned_before_completion=(
+                        issue.local_state.last_pinned_before_completion
+                    ),
+                    note_blocks=[],
+                    last_interacted_at=issue.local_state.last_interacted_at,
+                )
+            ),
             first_seen_at=issue.first_seen_at,
             synced_at=issue.synced_at,
             project_items=[
-                ProjectItemPayload.from_domain(project_item)
+                (
+                    ProjectItemPayload.summary_from_domain(project_item)
+                    if compact
+                    else ProjectItemPayload.from_domain(project_item)
+                )
                 for project_item in issue.project_items
             ],
+            details_loaded=not compact,
         )
 
 
@@ -363,10 +612,18 @@ class SnapshotResponse(CamelModel):
     meta: SnapshotMetaPayload
 
     @classmethod
-    def from_domain(cls, snapshot: IssueDashboardSnapshot) -> Self:
+    def from_domain(
+        cls,
+        snapshot: IssueDashboardSnapshot,
+        *,
+        compact: bool = False,
+    ) -> Self:
         """Build a snapshot response from a domain snapshot."""
         return cls(
-            issues=[IssuePayload.from_domain(issue) for issue in snapshot.issues],
+            issues=[
+                IssuePayload.from_domain(issue, compact=compact)
+                for issue in snapshot.issues
+            ],
             meta=SnapshotMetaPayload.from_domain(snapshot),
         )
 
@@ -375,7 +632,6 @@ class GitHubSessionPayload(CamelModel):
     """Represent the credentials payload used to persist a local session."""
 
     token: str = ""
-    username: str
 
 
 class GitHubSessionStatusPayload(CamelModel):

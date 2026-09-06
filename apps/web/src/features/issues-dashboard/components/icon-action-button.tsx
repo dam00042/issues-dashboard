@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Tooltip } from "@heroui/react";
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 export interface IconActionButtonProps {
   children: ReactNode;
@@ -30,7 +30,12 @@ export function IconActionButton({
   };
 
   return (
-    <Tooltip closeDelay={0} delay={120} isOpen={forcedIsOpen || isOpen} onOpenChange={handleOpenChange}>
+    <Tooltip
+      closeDelay={0}
+      delay={120}
+      isOpen={forcedIsOpen || isOpen}
+      onOpenChange={handleOpenChange}
+    >
       <Tooltip.Trigger>
         <div className="inline-flex">
           <Button

@@ -98,7 +98,7 @@ class GitHubActivityRoutesIntegrationTests(TestCase):
         self._client_context.__exit__(None, None, None)
         self._temp_directory.cleanup()
 
-    def test_loads_cache_first_and_persists_successful_refreshes(  # noqa: C901
+    def test_loads_cache_first_and_persists_successful_refreshes(  # noqa: C901, PLR0912, PLR0915
         self,
     ) -> None:
         """Return cached data instantly and retain refreshed rows across restarts."""
@@ -115,15 +115,21 @@ class GitHubActivityRoutesIntegrationTests(TestCase):
             message = "A cache-only request must not contact GitHub."
             raise AssertionError(message)
 
+        synchronization_response = self.client.post(
+            "/api/synchronization",
+            json={"closedWindow": "1m", "pullRequestWindow": "1m"},
+        )
+        if synchronization_response.status_code != HTTP_OK:
+            raise AssertionError(synchronization_response.text)
         live_response = self.client.get(
             "/api/github/pull-requests",
-            params={"window": "1m", "refresh": "true"},
+            params={"window": "1m"},
         )
         if live_response.status_code != HTTP_OK:
             raise AssertionError(live_response.text)
         live_payload = live_response.json()
-        if live_payload["source"] != "live" or live_payload["refreshedAt"] is None:
-            message = "Expected metadata for a successful live refresh."
+        if live_payload["source"] != "cache" or live_payload["refreshedAt"] is None:
+            message = "Expected metadata for a persisted synchronized projection."
             raise AssertionError(message)
         if live_payload["pullRequests"][0]["reviewDecision"] != "review_required":
             message = "Expected structured Pull Request review data."
@@ -185,9 +191,9 @@ class GitHubActivityRoutesIntegrationTests(TestCase):
 
     def test_rejects_invalid_pull_request_windows(self) -> None:
         """Reject invalid history windows without contacting GitHub."""
-        response = self.client.get(
-            "/api/github/pull-requests",
-            params={"window": "all", "refresh": "true"},
+        response = self.client.post(
+            "/api/synchronization",
+            json={"closedWindow": "1m", "pullRequestWindow": "all"},
         )
         if response.status_code != HTTP_UNPROCESSABLE_ENTITY:
             message = "Expected an invalid PR window to be rejected."

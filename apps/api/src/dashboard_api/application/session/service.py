@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from dashboard_api.infrastructure.session.local_session_store import (
         LocalGitHubSessionStore,
     )
     from dashboard_api.settings import AppSettings
+
+
+class GitHubIdentity(Protocol):
+    """Describe the authenticated identity fields needed by the session."""
+
+    login: str
+
+
+class GitHubIdentityGateway(Protocol):
+    """Describe GitHub token validation."""
+
+    def resolve(self, token: str) -> GitHubIdentity:
+        """Resolve the account represented by a token."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,10 +40,12 @@ class GitHubSessionService:
         self,
         session_store: LocalGitHubSessionStore,
         settings: AppSettings,
+        identity_gateway: GitHubIdentityGateway,
     ) -> None:
         """Store the collaborating session store and environment settings."""
         self._session_store = session_store
         self._settings = settings
+        self._identity_gateway = identity_gateway
 
     def get_status(self) -> GitHubSessionStatus:
         """Return whether GitHub credentials are available."""
@@ -45,10 +60,9 @@ class GitHubSessionService:
 
         environment_token = self._settings.github_token.strip()
         if environment_token:
-            environment_username = self._settings.github_username.strip() or None
             return GitHubSessionStatus(
                 configured=True,
-                username=environment_username,
+                username=None,
             )
 
         return GitHubSessionStatus(configured=False, username=None)
@@ -57,14 +71,8 @@ class GitHubSessionService:
         self,
         *,
         token: str,
-        username: str,
     ) -> GitHubSessionStatus:
-        """Persist the provided session, preserving the existing token if omitted."""
-        normalized_username = username.strip()
-        if not normalized_username:
-            msg = "Debes indicar tu usuario de GitHub."
-            raise ValueError(msg)
-
+        """Validate and persist a token under its real GitHub account."""
         normalized_token = token.strip()
         if not normalized_token:
             normalized_token = self._session_store.read_token().strip()
@@ -76,8 +84,10 @@ class GitHubSessionService:
             msg = "Debes introducir un token de GitHub."
             raise ValueError(msg)
 
+        identity = self._identity_gateway.resolve(normalized_token)
+
         persisted_session = self._session_store.write_session(
-            username=normalized_username,
+            username=identity.login,
             token=normalized_token,
         )
         return GitHubSessionStatus(

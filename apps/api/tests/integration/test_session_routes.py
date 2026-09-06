@@ -14,6 +14,7 @@ from dashboard_api.application.issues.service import (
     AssignedIssuesFetchResult,
     GitHubAuthenticationError,
 )
+from dashboard_api.infrastructure.github.identity import GitHubIdentity
 from dashboard_api.settings import AppSettings
 
 if TYPE_CHECKING:
@@ -21,6 +22,17 @@ if TYPE_CHECKING:
 
 HTTP_OK = 200
 HTTP_UNAUTHORIZED = 401
+
+
+class FakeGitHubIdentity:
+    """Resolve deterministic token identities without external network I/O."""
+
+    def resolve(self, token: str) -> GitHubIdentity:
+        """Return the account used by session route assertions."""
+        if token:
+            return GitHubIdentity(login="octocat", scopes=("repo", "read:project"))
+        message = "GitHub no ha aceptado el token configurado."
+        raise GitHubAuthenticationError(message, status_code=HTTP_UNAUTHORIZED)
 
 
 class EmptyGitHubAssignedIssuesClient:
@@ -69,6 +81,7 @@ class SessionRoutesIntegrationTests(TestCase):
         app = create_app(
             settings=settings,
             github_client=EmptyGitHubAssignedIssuesClient(),
+            github_identity_client=FakeGitHubIdentity(),
         )
         self._client_context = TestClient(app)
         self.client = self._client_context.__enter__()
@@ -100,7 +113,6 @@ class SessionRoutesIntegrationTests(TestCase):
             "/api/session",
             json={
                 "token": "ghp_example_token",
-                "username": "octocat",
             },
         )
         status_response = self.client.get("/api/session/status")
@@ -166,9 +178,9 @@ class SnapshotAuthenticationIntegrationTests(TestCase):
 
     def test_snapshot_rejects_invalid_github_credentials(self) -> None:
         """Return an authentication error instead of silently serving cache."""
-        response = self.client.get(
-            "/api/issues/snapshot",
-            params={"closed_window": "all"},
+        response = self.client.post(
+            "/api/synchronization",
+            json={"closedWindow": "all", "pullRequestWindow": "1m"},
         )
 
         if response.status_code != HTTP_UNAUTHORIZED:

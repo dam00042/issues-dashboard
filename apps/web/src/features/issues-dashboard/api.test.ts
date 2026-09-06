@@ -36,7 +36,7 @@ describe("Electron session API", () => {
       githubIssuesDesktop: {
         getSessionStatus: vi.fn().mockResolvedValue({
           configured: true,
-          username: "DAM6628_cemosa",
+          username: "octocat",
         }),
         waitForBackendReady,
       },
@@ -44,7 +44,7 @@ describe("Electron session API", () => {
 
     await expect(waitForLocalSessionStatus(100)).resolves.toEqual({
       configured: true,
-      username: "DAM6628_cemosa",
+      username: "octocat",
     });
     expect(waitForBackendReady).toHaveBeenCalledOnce();
   });
@@ -52,7 +52,7 @@ describe("Electron session API", () => {
   it("saves and clears the desktop session through Electron IPC", async () => {
     const saveSession = vi.fn().mockResolvedValue({
       configured: true,
-      username: "DAM6628_cemosa",
+      username: "octocat",
     });
     const clearSession = vi.fn().mockResolvedValue({
       configured: false,
@@ -65,11 +65,10 @@ describe("Electron session API", () => {
     await expect(
       saveLocalSession({
         token: "ghp_test",
-        username: "DAM6628_cemosa",
       }),
     ).resolves.toEqual({
       configured: true,
-      username: "DAM6628_cemosa",
+      username: "octocat",
     });
     await expect(clearLocalSession()).resolves.toEqual({
       configured: false,
@@ -77,7 +76,6 @@ describe("Electron session API", () => {
     });
     expect(saveSession).toHaveBeenCalledWith({
       token: "ghp_test",
-      username: "DAM6628_cemosa",
     });
     expect(clearSession).toHaveBeenCalledOnce();
   });

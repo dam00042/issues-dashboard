@@ -15,6 +15,7 @@ HTTP_OK = 200
 HTTP_FORBIDDEN = 403
 LINKED_PULL_REQUEST_NUMBER = 9
 REQUESTED_PULL_REQUEST_NUMBER = 2
+SECOND_REQUEST_COUNT = 2
 
 
 def _provide_test_token() -> str:
@@ -155,6 +156,55 @@ class GitHubAssignedIssuesClientTests(TestCase):
             raise AssertionError(message)
         if "since" in request_params[0] or not request_params[1].get("since"):
             message = "Expected only the closed request to include a cutoff."
+            raise AssertionError(message)
+
+    def test_reuses_rest_issue_page_when_github_returns_not_modified(self) -> None:
+        """Use ETags to avoid downloading and reparsing an unchanged issue page."""
+        issue_requests: list[httpx.Request] = []
+        graphql_requests = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal graphql_requests
+            if request.url.path == "/issues":
+                issue_requests.append(request)
+                if len(issue_requests) == SECOND_REQUEST_COUNT:
+                    return httpx.Response(
+                        httpx.codes.NOT_MODIFIED,
+                        request=request,
+                    )
+                return httpx.Response(
+                    HTTP_OK,
+                    headers={"ETag": '"issues-v1"'},
+                    json=_assigned_issue_payload(),
+                    request=request,
+                )
+            if request.url.path == "/graphql":
+                graphql_requests += 1
+                return httpx.Response(
+                    HTTP_OK,
+                    json=_project_graphql_payload(),
+                    request=request,
+                )
+            message = f"Unexpected GitHub path: {request.url.path}"
+            raise AssertionError(message)
+
+        client = GitHubAssignedIssuesClient(
+            AppSettings(),
+            token_provider=_provide_test_token,
+            transport=httpx.MockTransport(handler),
+        )
+
+        first_result = client.fetch_assigned_issues()
+        second_result = client.fetch_assigned_issues()
+
+        if len(first_result.issues) != 1 or len(second_result.issues) != 1:
+            message = "Expected the cached REST page to preserve its issue."
+            raise AssertionError(message)
+        if issue_requests[1].headers.get("if-none-match") != '"issues-v1"':
+            message = "Expected the second REST request to send the cached ETag."
+            raise AssertionError(message)
+        if graphql_requests != 1:
+            message = "Expected unchanged Projects metadata to use its TTL cache."
             raise AssertionError(message)
 
     def test_fetches_project_status_sprint_and_priority(self) -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -10,16 +9,17 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from dashboard_api.application.issues.service import (
     GitHubAuthenticationError,
 )
-from dashboard_api.domain.issues.models import ClosedIssueWindow
 from dashboard_api.presentation.http.schemas import (
     IssueCompletionUpdatePayload,
     IssueNotesUpdatePayload,
+    IssuePayload,
     IssuePinUpdatePayload,
     IssuePriorityUpdatePayload,
     SnapshotResponse,
     SyncStateItemPayload,
     SyncStatesPayload,
 )
+from dashboard_api.presentation.http.window_parsing import parse_closed_issue_window
 
 if TYPE_CHECKING:
     from dashboard_api.application.issues.service import (
@@ -46,33 +46,6 @@ def _get_command_service(request: Request) -> IssueLocalStateCommandService:
     return cast("IssueLocalStateCommandService", request.app.state.command_service)
 
 
-def _parse_closed_window(raw_value: str) -> ClosedIssueWindow | None:
-    """Parse an amount plus days, months or years, keeping legacy months."""
-    normalized_value = raw_value.strip().lower()
-    if normalized_value == "all":
-        return None
-
-    match = re.fullmatch(r"(\d+)([dmy])?", normalized_value)
-    if match is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="closed_window debe ser 'all' o un entero positivo con d, m o y.",
-        )
-
-    amount = int(match.group(1))
-    if amount <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="closed_window debe ser 'all' o un entero positivo con d, m o y.",
-        )
-
-    unit = {"d": "days", "m": "months", "y": "years"}.get(
-        match.group(2) or "m",
-        "months",
-    )
-    return ClosedIssueWindow(amount=amount, unit=unit)
-
-
 @router.get("/snapshot", response_model=SnapshotResponse)
 def get_snapshot(
     request: Request,
@@ -80,10 +53,17 @@ def get_snapshot(
         str,
         Query(),
     ] = "6m",
+    compact: Annotated[bool, Query()] = False,  # noqa: FBT002
 ) -> SnapshotResponse:
     """Return a merged dashboard snapshot for the selected closed window."""
     snapshot_service = _get_snapshot_service(request)
-    parsed_closed_window = _parse_closed_window(closed_window)
+    try:
+        parsed_closed_window = parse_closed_issue_window(closed_window)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
     try:
         snapshot = snapshot_service.build_snapshot(parsed_closed_window)
     except GitHubAuthenticationError as error:
@@ -92,7 +72,19 @@ def get_snapshot(
             detail=str(error),
         ) from error
 
-    return SnapshotResponse.from_domain(snapshot)
+    return SnapshotResponse.from_domain(snapshot, compact=compact)
+
+
+@router.get("/{issue_key:path}", response_model=IssuePayload)
+def get_issue_detail(issue_key: str, request: Request) -> IssuePayload:
+    """Return a complete issue detail from SQLite without remote I/O."""
+    issue = _get_snapshot_service(request).get_issue(issue_key)
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La issue no está disponible en la caché local.",
+        )
+    return IssuePayload.from_domain(issue)
 
 
 @router.post("/sync-state", response_model=dict[str, int])

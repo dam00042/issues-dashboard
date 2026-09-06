@@ -42,7 +42,6 @@ def save_session(
     try:
         session_status = session_service.save_session(
             token=payload.token,
-            username=payload.username,
         )
     except ValueError as error:
         raise HTTPException(

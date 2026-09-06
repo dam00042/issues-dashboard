@@ -2,13 +2,17 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { CheckCheck, ExternalLink, Eye, List, Pin } from "lucide-react";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, memo, useEffect, useRef, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
 import { IssuePrioritySelector } from "@/features/issues-dashboard/components/issue-priority-selector";
 import { LinkedPullRequests } from "@/features/issues-dashboard/components/linked-pull-requests";
+import {
+  LinkedPullRequestsSkeleton,
+  NotesEditorSkeleton,
+} from "@/features/issues-dashboard/components/loading-skeletons";
 import { NotesBlockEditor } from "@/features/issues-dashboard/components/notes-block-editor";
 import { ResizeHandle } from "@/features/issues-dashboard/components/resize-handle";
 import type {
@@ -26,13 +30,17 @@ export interface ActiveBoardProps {
   activeIssue: DashboardIssue | null;
   backlogIssues: DashboardIssue[];
   isSidebarCollapsed: boolean;
+  linkedPullRequestsCollapsed: boolean;
   priorityBuckets: PriorityBucket[];
   selectedIssueKey: string | null;
+  sidebarWidth: number;
   onCollapseSidebar: () => void;
   onExpandSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
   onReviewIssue: (issueKey: string) => void;
+  onIssuePrefetch: (issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
+  onSidebarWidthChange: (width: number) => void;
   onSetPriority: (issueKey: string, priority: PriorityValue | null) => void;
   onTogglePin: (issueKey: string) => void;
   onUpdateBlocks: (
@@ -47,7 +55,7 @@ interface DragState {
   mode: DragMode;
   startX: number;
   threeColumnLeft: number;
-  threeColumnRight: number;
+  sidebarWidth: number;
   twoColumnLeft: number;
 }
 
@@ -140,17 +148,21 @@ function DroppablePriorityBucket({
   );
 }
 
-export function ActiveBoard({
+export const ActiveBoard = memo(function ActiveBoard({
   activeIssue,
   backlogIssues,
   isSidebarCollapsed,
+  linkedPullRequestsCollapsed,
   priorityBuckets,
   selectedIssueKey,
+  sidebarWidth,
   onCollapseSidebar,
   onExpandSidebar,
   onCompleteIssue,
   onReviewIssue,
+  onIssuePrefetch,
   onIssueSelect,
+  onSidebarWidthChange,
   onSetPriority,
   onTogglePin,
   onUpdateBlocks,
@@ -167,10 +179,17 @@ export function ActiveBoard({
   });
   const [twoColumnLeft, setTwoColumnLeft] = useState(24);
   const [threeColumnLeft, setThreeColumnLeft] = useState(20);
-  const [threeColumnRight, setThreeColumnRight] = useState(30);
+  const [renderedSidebarWidth, setRenderedSidebarWidth] =
+    useState(sidebarWidth);
+  const sidebarWidthRef = useRef(sidebarWidth);
 
   const sidebarIssue = activeIssue;
   const isSidebarVisible = Boolean(sidebarIssue && !isSidebarCollapsed);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+    setRenderedSidebarWidth(sidebarWidth);
+  }, [sidebarWidth]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(
@@ -217,18 +236,27 @@ export function ActiveBoard({
       }
 
       if (dragState.mode === "right-split") {
-        const maxRight = 100 - THREE_COLUMN_MIN_LEFT - THREE_COLUMN_MIN_CENTER;
-        setThreeColumnRight(
-          clamp(
-            dragState.threeColumnRight - deltaPercent,
-            THREE_COLUMN_MIN_RIGHT,
-            maxRight,
-          ),
+        const minimumContentWidth =
+          (workspaceWidth * (THREE_COLUMN_MIN_LEFT + THREE_COLUMN_MIN_CENTER)) /
+          100;
+        const maximumWidth = Math.min(
+          960,
+          workspaceWidth - minimumContentWidth - SPLITTER_WIDTH_PX * 2,
         );
+        const nextWidth = clamp(
+          dragState.sidebarWidth + dragState.startX - event.clientX,
+          320,
+          Math.max(320, maximumWidth),
+        );
+        sidebarWidthRef.current = nextWidth;
+        setRenderedSidebarWidth(nextWidth);
       }
     };
 
     const handleMouseUp = () => {
+      if (dragState.mode === "right-split") {
+        onSidebarWidthChange(Math.round(sidebarWidthRef.current));
+      }
       setDragState(null);
     };
 
@@ -256,7 +284,7 @@ export function ActiveBoard({
       window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("mouseout", handleMouseOut);
     };
-  }, [dragState]);
+  }, [dragState, onSidebarWidthChange]);
 
   const hasSidebarIssue = Boolean(sidebarIssue);
   const isSidebarExpanded = hasSidebarIssue && !isSidebarCollapsed;
@@ -266,9 +294,7 @@ export function ActiveBoard({
         threeColumnLeft / 100,
       )})`} ${String(SPLITTER_WIDTH_PX)}px minmax(0, 1fr) ${String(
         SPLITTER_WIDTH_PX,
-      )}px ${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
-        threeColumnRight / 100,
-      )})`}`
+      )}px ${String(renderedSidebarWidth)}px`
     : hasSidebarIssue
       ? `${`calc((100% - ${String(SPLITTER_WIDTH_PX * 2)}px) * ${String(
           twoColumnLeft / 100,
@@ -316,6 +342,7 @@ export function ActiveBoard({
                   key={issue.issueKey}
                   isSelected={selectedIssueKey === issue.issueKey}
                   issue={issue}
+                  onIssuePrefetch={onIssuePrefetch}
                   onIssueSelect={onIssueSelect}
                   onCompleteIssue={onCompleteIssue}
                   onReviewIssue={onReviewIssue}
@@ -333,7 +360,7 @@ export function ActiveBoard({
               mode: isSidebarVisible ? "left-split" : "two-col",
               startX: clientX,
               threeColumnLeft,
-              threeColumnRight,
+              sidebarWidth: renderedSidebarWidth,
               twoColumnLeft,
             })
           }
@@ -360,6 +387,7 @@ export function ActiveBoard({
                     key={issue.issueKey}
                     isSelected={selectedIssueKey === issue.issueKey}
                     issue={issue}
+                    onIssuePrefetch={onIssuePrefetch}
                     onIssueSelect={onIssueSelect}
                     onCompleteIssue={onCompleteIssue}
                     onReviewIssue={onReviewIssue}
@@ -386,7 +414,7 @@ export function ActiveBoard({
                     mode: "right-split",
                     startX: clientX,
                     threeColumnLeft,
-                    threeColumnRight,
+                    sidebarWidth: renderedSidebarWidth,
                     twoColumnLeft,
                   })
           }
@@ -461,22 +489,33 @@ export function ActiveBoard({
             </h2>
           </div>
 
-          <LinkedPullRequests issue={sidebarIssue} />
+          {sidebarIssue.detailsLoaded ? (
+            <LinkedPullRequests
+              defaultCollapsed={linkedPullRequestsCollapsed}
+              issue={sidebarIssue}
+            />
+          ) : (
+            <LinkedPullRequestsSkeleton />
+          )}
 
           <IssuePrioritySelector
             issue={sidebarIssue}
             onSetPriority={onSetPriority}
           />
 
-          <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3 py-2.5">
-            <NotesBlockEditor
-              key={sidebarIssue.issueKey}
-              blocks={sidebarIssue.localState.noteBlocks}
-              onBlocksChange={(nextBlocks) =>
-                onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
-              }
-            />
-          </div>
+          {sidebarIssue.detailsLoaded ? (
+            <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-3 py-2.5">
+              <NotesBlockEditor
+                key={sidebarIssue.issueKey}
+                blocks={sidebarIssue.localState.noteBlocks}
+                onBlocksChange={(nextBlocks) =>
+                  onUpdateBlocks(sidebarIssue.issueKey, nextBlocks)
+                }
+              />
+            </div>
+          ) : (
+            <NotesEditorSkeleton />
+          )}
         </aside>
       ) : !isWideLayout ? (
         <aside className="flex min-h-[220px] items-center justify-center rounded-[1.2rem] border border-dashed border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/78 px-5 py-8 text-center text-sm text-[rgb(var(--app-muted))] xl:min-h-0">
@@ -485,4 +524,4 @@ export function ActiveBoard({
       ) : null}
     </div>
   );
-}
+});

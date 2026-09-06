@@ -1,8 +1,11 @@
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+
+export {};
 
 const electronModule = require("electron");
 const {
@@ -22,7 +25,11 @@ const {
   decryptSessionToken,
   readSessionRecord,
   writeSessionRecord,
-} = require("./session-store.cjs");
+} = require("./session-store.js");
+const {
+  BackendContractError,
+  assertCompatibleBackendHealth,
+} = require("./backend-health.js");
 
 const APP_TITLE = "Issues Dashboard";
 const APP_USER_MODEL_ID = "com.githubissuesdashboard";
@@ -31,12 +38,21 @@ const DEFAULT_API_PORT = 8010;
 const DEFAULT_BACKGROUND_DARK = "#111827";
 const DEFAULT_BACKGROUND_LIGHT = "#f5efe7";
 const DEV_FRONTEND_URL = "http://127.0.0.1:3000";
+const LOG_MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BACKEND_RESTARTS = 3;
+const runtimeDirectory = fs.existsSync(path.join(__dirname, "assets"))
+  ? __dirname
+  : path.resolve(__dirname, "..");
 
 let backendPort = null;
 let backendProcess = null;
 let backendReady = false;
 let backendStartupPromise = null;
+let backendRestartAttempts = 0;
+let backendStopRequested = false;
+let appQuitting = false;
 let mainWindow = null;
+const runtimeSecret = crypto.randomBytes(32).toString("base64url");
 
 function buildApplicationMenu() {
   return Menu.buildFromTemplate([
@@ -56,7 +72,7 @@ function buildApplicationMenu() {
 }
 
 function getDesktopIconPath() {
-  return path.join(__dirname, "assets", "app-icon.ico");
+  return path.join(runtimeDirectory, "assets", "app-icon.ico");
 }
 
 function getDesktopLogFilePath() {
@@ -75,14 +91,20 @@ function getDesktopLogFilePath() {
   return path.join(process.cwd(), "desktop.log");
 }
 
-function writeDesktopLog(message, error) {
+function writeDesktopLog(message: string, error?: unknown) {
   const errorText =
     error instanceof Error ? `\n${error.stack ?? error.message}` : "";
   const logLine = `[${new Date().toISOString()}] ${message}${errorText}\n`;
 
   try {
-    fs.mkdirSync(path.dirname(getDesktopLogFilePath()), { recursive: true });
-    fs.appendFileSync(getDesktopLogFilePath(), logLine);
+    const logPath = getDesktopLogFilePath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size >= LOG_MAX_BYTES) {
+      const previousLogPath = `${logPath}.1`;
+      fs.rmSync(previousLogPath, { force: true });
+      fs.renameSync(logPath, previousLogPath);
+    }
+    fs.appendFileSync(logPath, logLine);
   } catch (writeError) {
     console.error("[desktop:log] Unable to write desktop log.", writeError);
   }
@@ -98,63 +120,108 @@ function getDatabaseFilePath() {
   return path.join(app.getPath("userData"), "issues.db");
 }
 
-function getBackendSessionFilePath() {
-  return path.join(app.getPath("userData"), "backend-session.json");
+function getPreferencesFilePath() {
+  return path.join(app.getPath("userData"), "preferences.json");
 }
 
-function getBackendSessionKeyFilePath() {
-  return path.join(app.getPath("userData"), "backend-session.key");
+function getWindowStateFilePath() {
+  return path.join(app.getPath("userData"), "window-state.json");
 }
 
-function buildDatabaseExportFileName() {
+function readWindowState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(getWindowStateFilePath(), "utf8"));
+    return {
+      height: Math.max(760, Number(state.height) || 940),
+      isMaximized: state.isMaximized !== false,
+      width: Math.max(1180, Number(state.width) || 1480),
+      x: Number.isFinite(state.x) ? state.x : undefined,
+      y: Number.isFinite(state.y) ? state.y : undefined,
+    };
+  } catch {
+    return { height: 940, isMaximized: true, width: 1480 };
+  }
+}
+
+function saveWindowState(windowInstance) {
+  const bounds = windowInstance.getNormalBounds();
+  const state = {
+    ...bounds,
+    isMaximized: windowInstance.isMaximized(),
+  };
+  const statePath = getWindowStateFilePath();
+  const temporaryPath = `${statePath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), "utf8");
+  fs.renameSync(temporaryPath, statePath);
+}
+
+function buildBackupExportFileName() {
   const timestamp = new Date()
     .toISOString()
     .replace(/:/gu, "-")
     .replace(/\..+$/u, "");
-  return `issues-dashboard-${timestamp}.db`;
+  return `issues-dashboard-${timestamp}.issues-dashboard-backup`;
 }
 
-async function exportDatabaseFile() {
-  const databaseFilePath = getDatabaseFilePath();
-  if (!fs.existsSync(databaseFilePath)) {
-    throw new Error("Todavia no existe una base de datos local para exportar.");
+async function requestLocalApi(endpoint, payload) {
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+    body: JSON.stringify(payload),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dashboard-Runtime-Secret": runtimeSecret,
+    },
+    method: "POST",
+  });
+  const responsePayload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = responsePayload?.detail;
+    throw new Error(
+      typeof detail === "string"
+        ? detail
+        : "El servicio local no pudo completar la operación.",
+    );
   }
+  return responsePayload;
+}
 
+async function exportBackupFile() {
   const saveResult = await dialog.showSaveDialog({
-    buttonLabel: "Exportar",
+    buttonLabel: "Crear copia",
     defaultPath: path.join(
       app.getPath("documents"),
-      buildDatabaseExportFileName(),
+      buildBackupExportFileName(),
     ),
     filters: [
       {
-        extensions: ["db", "sqlite", "sqlite3"],
-        name: "SQLite",
+        extensions: ["issues-dashboard-backup"],
+        name: "Copia de Issues Dashboard",
       },
     ],
     properties: ["createDirectory", "showOverwriteConfirmation"],
-    title: "Exportar base de datos",
+    title: "Exportar copia completa",
   });
 
   if (saveResult.canceled || !saveResult.filePath) {
     return { cancelled: true, path: null };
   }
 
-  fs.copyFileSync(databaseFilePath, saveResult.filePath);
-  return { cancelled: false, path: saveResult.filePath };
+  const result = await requestLocalApi("/api/backups/export", {
+    path: saveResult.filePath,
+  });
+  return { cancelled: false, path: result.path };
 }
 
-async function importDatabaseFile() {
+async function importBackupFile() {
   const openResult = await dialog.showOpenDialog({
-    buttonLabel: "Importar",
+    buttonLabel: "Seleccionar copia",
     filters: [
       {
-        extensions: ["db", "sqlite", "sqlite3"],
-        name: "SQLite",
+        extensions: ["issues-dashboard-backup"],
+        name: "Copia de Issues Dashboard",
       },
     ],
     properties: ["openFile"],
-    title: "Importar base de datos",
+    title: "Importar copia completa",
   });
 
   if (openResult.canceled || openResult.filePaths.length === 0) {
@@ -166,49 +233,87 @@ async function importDatabaseFile() {
     throw new Error("No se pudo localizar el archivo seleccionado.");
   }
 
-  const hadStoredSession = hasStoredSession();
-  await stopBackendProcess();
-
-  const destinationPath = getDatabaseFilePath();
-  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-  fs.copyFileSync(selectedFilePath, destinationPath);
-
-  if (hadStoredSession) {
-    await startBackendProcess({ forceRestart: true });
+  const inspection = await requestLocalApi("/api/backups/inspect", {
+    path: selectedFilePath,
+  });
+  const currentAccount = getStoredSessionRecord()?.username ?? null;
+  const accountWarning =
+    inspection.sourceAccount && inspection.sourceAccount !== currentAccount
+      ? `\n\nLa copia pertenece a @${inspection.sourceAccount} y la sesión actual es @${currentAccount ?? "desconocida"}.`
+      : "";
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    buttons: ["Cancelar", "Restaurar copia"],
+    cancelId: 0,
+    defaultId: 0,
+    detail: `Se sustituirán las issues, Pull Requests, notas y ajustes actuales.${accountWarning}\n\nAntes se creará automáticamente una copia de seguridad recuperable.`,
+    message: "¿Quieres restaurar esta copia completa?",
+    noLink: true,
+    title: "Confirmar restauración",
+    type: "warning",
+  });
+  if (confirmation.response !== 1) {
+    return { cancelled: true, path: null };
   }
 
-  return { cancelled: false, path: selectedFilePath };
+  const result = await requestLocalApi("/api/backups/import", {
+    path: selectedFilePath,
+  });
+  return {
+    cancelled: false,
+    path: selectedFilePath,
+    safetyBackupPath: result.safetyBackupPath,
+    sourceAccount: result.sourceAccount,
+  };
 }
 
 function getApiBaseUrl() {
   return `http://127.0.0.1:${backendPort ?? DEFAULT_API_PORT}`;
 }
 
-function wrapMasterKey(masterKeyBase64) {
+async function resolveGitHubIdentity(githubToken) {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 20_000);
+  try {
+    const response = await fetch("https://api.github.com/user", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${githubToken}`,
+        "User-Agent": "github-issues-dashboard-v3",
+      },
+      signal: abortController.signal,
+    });
+    if (!response.ok) {
+      throw new Error(
+        "GitHub no ha aceptado el token. Comprueba que siga siendo válido.",
+      );
+    }
+    const payload = await response.json();
+    const login = String(payload?.login ?? "").trim();
+    if (!login) {
+      throw new Error("GitHub no ha devuelto un usuario válido.");
+    }
+    return { login };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function encryptSessionToken(token) {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error(
       "No se puede guardar la sesión porque safeStorage no está disponible en este equipo.",
     );
   }
 
-  return {
-    protection: "safe-storage",
-    value: safeStorage.encryptString(masterKeyBase64).toString("base64"),
-  };
+  return safeStorage.encryptString(token);
 }
 
-function unwrapMasterKey(wrappedKey) {
-  if (wrappedKey.protection !== "safe-storage") {
-    throw new Error(
-      "La sesión guardada usa un modo de protección no soportado. Cierra sesión y vuelve a iniciarla.",
-    );
-  }
-
+function decryptSessionTokenBuffer(encryptedToken) {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error("Electron safeStorage is not available on this machine.");
   }
 
-  return safeStorage.decryptString(Buffer.from(wrappedKey.value, "base64"));
+  return safeStorage.decryptString(encryptedToken);
 }
 
 function getStoredSessionRecord() {
@@ -228,7 +333,7 @@ function getStoredGitHubToken() {
   }
 
   try {
-    return decryptSessionToken(sessionRecord, unwrapMasterKey);
+    return decryptSessionToken(sessionRecord, decryptSessionTokenBuffer);
   } catch (error) {
     writeDesktopLog(
       "[desktop:session] Unable to decrypt session token.",
@@ -257,7 +362,7 @@ function resolveDesktopBackgroundColor(theme) {
 }
 
 function getDevelopmentBackendCommand() {
-  const apiDirectory = path.resolve(__dirname, "..", "api");
+  const apiDirectory = path.resolve(runtimeDirectory, "..", "api");
   const pythonExecutable =
     process.platform === "win32"
       ? path.join(apiDirectory, ".venv", "Scripts", "python.exe")
@@ -290,8 +395,8 @@ function getDevelopmentBackendCommand() {
 function getPackagedBackendCommand() {
   return {
     args: [],
-    command: path.join(__dirname, "backend", "dashboard-api.exe"),
-    cwd: path.join(__dirname, "backend"),
+    command: path.join(runtimeDirectory, "backend", "dashboard-api.exe"),
+    cwd: path.join(runtimeDirectory, "backend"),
   };
 }
 
@@ -299,9 +404,10 @@ function buildBackendEnvironment(githubToken) {
   return {
     ...process.env,
     DASHBOARD_API_PORT: String(backendPort),
+    DASHBOARD_DESKTOP_MODE: "1",
+    DASHBOARD_PREFERENCES_PATH: getPreferencesFilePath(),
+    DASHBOARD_RUNTIME_SECRET: runtimeSecret,
     GITHUB_TOKEN: githubToken,
-    GITHUB_SESSION_KEY_PATH: getBackendSessionKeyFilePath(),
-    GITHUB_SESSION_PATH: getBackendSessionFilePath(),
     ISSUES_DATABASE_PATH: getDatabaseFilePath(),
     PYTHONUTF8: "1",
   };
@@ -367,6 +473,7 @@ async function reserveBackendPort() {
 async function stopBackendProcess() {
   const processToStop = backendProcess;
   backendReady = false;
+  backendStopRequested = true;
 
   if (!processToStop) {
     return;
@@ -374,7 +481,7 @@ async function stopBackendProcess() {
 
   backendProcess = null;
 
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
       if (!settled) {
@@ -436,6 +543,32 @@ async function waitForUrl(targetUrl, timeoutMs) {
   throw new Error(`Timed out while waiting for ${targetUrl}.`);
 }
 
+async function waitForCompatibleBackend(targetUrl, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(targetUrl, {
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (response.ok) {
+        assertCompatibleBackendHealth(await response.json());
+        return;
+      }
+    } catch (error) {
+      if (error instanceof BackendContractError) {
+        throw error;
+      }
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+  }
+
+  throw new Error(`Timed out while waiting for ${targetUrl}.`);
+}
+
 async function launchBackendProcess(forceRestart) {
   await reserveBackendPort();
   if (forceRestart) {
@@ -443,6 +576,7 @@ async function launchBackendProcess(forceRestart) {
   }
 
   backendReady = false;
+  backendStopRequested = false;
   const githubToken = getStoredGitHubToken();
   const backendCommand = app.isPackaged
     ? getPackagedBackendCommand()
@@ -470,10 +604,28 @@ async function launchBackendProcess(forceRestart) {
     writeDesktopLog(
       `[desktop:api] exited with code ${String(code)} signal ${String(signal)}`,
     );
+    if (
+      !backendStopRequested &&
+      !appQuitting &&
+      hasStoredSession() &&
+      backendRestartAttempts < MAX_BACKEND_RESTARTS
+    ) {
+      backendRestartAttempts += 1;
+      const restartDelay = backendRestartAttempts * 1_000;
+      setTimeout(() => {
+        void startBackendProcess({ forceRestart: false }).catch((error) => {
+          writeDesktopLog("[desktop:api] Automatic restart failed.", error);
+        });
+      }, restartDelay).unref();
+    }
   });
 
-  await waitForUrl(`${getApiBaseUrl()}/health`, BACKEND_HEALTH_TIMEOUT_MS);
+  await waitForCompatibleBackend(
+    `${getApiBaseUrl()}/health`,
+    BACKEND_HEALTH_TIMEOUT_MS,
+  );
   backendReady = true;
+  backendRestartAttempts = 0;
 }
 
 function startBackendProcess(options = { forceRestart: true }) {
@@ -503,7 +655,7 @@ async function loadFrontend(mainWindowInstance) {
   if (app.isPackaged) {
     writeDesktopLog("[desktop:web] Loading packaged frontend.");
     await mainWindowInstance.loadFile(
-      path.join(__dirname, "web", "index.html"),
+      path.join(runtimeDirectory, "web", "index.html"),
     );
     return;
   }
@@ -515,22 +667,28 @@ async function loadFrontend(mainWindowInstance) {
 
 async function createMainWindow() {
   writeDesktopLog("[desktop:window] Creating desktop window.");
+  const windowState = readWindowState();
   const windowInstance = new BrowserWindow({
     autoHideMenuBar: true,
     backgroundColor: resolveDesktopBackgroundColor("system"),
     frame: false,
-    height: 940,
+    height: windowState.height,
     icon: getDesktopIconPath(),
     minHeight: 760,
     minWidth: 1180,
     show: false,
     title: APP_TITLE,
-    width: 1480,
+    width: windowState.width,
+    x: windowState.x,
+    y: windowState.y,
     webPreferences: {
-      additionalArguments: [`--api-base-url=${getApiBaseUrl()}`],
+      additionalArguments: [
+        `--api-base-url=${getApiBaseUrl()}`,
+        `--runtime-secret=${runtimeSecret}`,
+      ],
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.cjs"),
+      preload: path.join(__dirname, "preload.js"),
       sandbox: false,
       spellcheck: false,
     },
@@ -575,12 +733,24 @@ async function createMainWindow() {
       mainWindow = null;
     }
   });
+  windowInstance.on("close", () => {
+    try {
+      saveWindowState(windowInstance);
+    } catch (error) {
+      writeDesktopLog(
+        "[desktop:window] Unable to persist window state.",
+        error,
+      );
+    }
+  });
   windowInstance.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
 
-  windowInstance.maximize();
+  if (windowState.isMaximized) {
+    windowInstance.maximize();
+  }
 
   await loadFrontend(windowInstance);
 }
@@ -616,12 +786,6 @@ function registerDesktopIpcHandlers() {
   });
 
   ipcMain.handle("desktop:save-session", async (_event, payload) => {
-    const username = String(payload?.username ?? "").trim();
-
-    if (!username) {
-      throw new Error("Debes indicar tu usuario de GitHub.");
-    }
-
     const existingRecord = getStoredSessionRecord();
     let githubToken = String(payload?.token ?? "").trim();
 
@@ -631,7 +795,10 @@ function registerDesktopIpcHandlers() {
       }
 
       try {
-        githubToken = decryptSessionToken(existingRecord, unwrapMasterKey);
+        githubToken = decryptSessionToken(
+          existingRecord,
+          decryptSessionTokenBuffer,
+        );
       } catch {
         throw new Error(
           "No se pudo reutilizar el token guardado. Introduce un token de GitHub para volver a guardar la sesión.",
@@ -639,10 +806,11 @@ function registerDesktopIpcHandlers() {
       }
     }
 
+    const identity = await resolveGitHubIdentity(githubToken);
     const nextRecord = createEncryptedSessionRecord({
+      encryptString: encryptSessionToken,
       token: githubToken,
-      username,
-      wrapKey: wrapMasterKey,
+      username: identity.login,
     });
 
     writeSessionRecord(getSessionFilePath(), nextRecord);
@@ -650,7 +818,7 @@ function registerDesktopIpcHandlers() {
 
     return {
       configured: true,
-      username,
+      username: identity.login,
     };
   });
 
@@ -680,12 +848,12 @@ function registerDesktopIpcHandlers() {
     mainWindow?.setBackgroundColor(resolveDesktopBackgroundColor(theme));
   });
 
-  ipcMain.handle("desktop:export-database", async () => {
-    return exportDatabaseFile();
+  ipcMain.handle("desktop:export-backup", async () => {
+    return exportBackupFile();
   });
 
-  ipcMain.handle("desktop:import-database", async () => {
-    return importDatabaseFile();
+  ipcMain.handle("desktop:import-backup", async () => {
+    return importBackupFile();
   });
 
   ipcMain.handle("desktop:minimize-window", async () => {
@@ -724,13 +892,12 @@ async function bootstrapDesktopApp() {
   Menu.setApplicationMenu(buildApplicationMenu());
   registerDesktopIpcHandlers();
   await reserveBackendPort();
-  await createMainWindow();
-
   if (hasStoredSession()) {
-    void startBackendProcess({ forceRestart: false }).catch((error) => {
+    await startBackendProcess({ forceRestart: false }).catch((error) => {
       writeDesktopLog("[desktop:api] Backend startup failed.", error);
     });
   }
+  await createMainWindow();
 }
 
 process.on("uncaughtException", (error) => {
@@ -765,6 +932,7 @@ if (!app || typeof app.whenReady !== "function") {
   });
 
   app.on("before-quit", () => {
+    appQuitting = true;
     void stopBackendProcess();
   });
 

@@ -4,7 +4,6 @@ export interface DesktopSessionStatus {
 }
 
 export interface DesktopSessionPayload {
-  username: string;
   token?: string;
 }
 
@@ -16,15 +15,18 @@ export interface DesktopBackendStatus {
   ready: boolean;
 }
 
-export interface DesktopDatabaseTransferResult {
+export interface DesktopBackupTransferResult {
   cancelled: boolean;
   path: string | null;
+  safetyBackupPath?: string;
+  sourceAccount?: string | null;
 }
 
 export type ThemeMode = "system" | "light" | "dark";
 
 export interface DesktopBridge {
   apiBaseUrl?: string;
+  runtimeSecret?: string;
   isElectron: boolean;
   getSessionStatus?: () => Promise<DesktopSessionStatus>;
   saveSession?: (
@@ -40,8 +42,8 @@ export interface DesktopBridge {
   getWindowState?: () => Promise<DesktopWindowState>;
   getBackendStatus?: () => Promise<DesktopBackendStatus>;
   waitForBackendReady?: () => Promise<DesktopBackendStatus>;
-  exportDatabase?: () => Promise<DesktopDatabaseTransferResult>;
-  importDatabase?: () => Promise<DesktopDatabaseTransferResult>;
+  exportBackup?: () => Promise<DesktopBackupTransferResult>;
+  importBackup?: () => Promise<DesktopBackupTransferResult>;
 }
 
 declare global {

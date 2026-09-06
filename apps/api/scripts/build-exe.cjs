@@ -1,6 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const {
+  runBootstrapPython,
+  runPython,
+} = require("./python-runtime.cjs");
 
 const apiDirectory = path.resolve(__dirname, "..");
 const distDirectory = path.join(apiDirectory, "dist-electron");
@@ -18,18 +21,12 @@ function removePath(targetPath) {
 }
 
 function runPyInstaller() {
-  const result = spawnSync(
-    "python",
-    [
+  runPython([
       "-m",
-      "uv",
-      "run",
-      "--project",
-      ".",
-      "pyinstaller",
+      "PyInstaller",
       "--clean",
       "--noconfirm",
-      "--onefile",
+      "--onedir",
       "--name",
       "dashboard-api",
       "--hidden-import",
@@ -47,20 +44,22 @@ function runPyInstaller() {
       "--workpath",
       workDirectory,
       "src/dashboard_api/__main__.py",
-    ],
-    {
-      cwd: apiDirectory,
-      stdio: "inherit",
-    },
-  );
+    ]);
+}
 
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    throw new Error("PyInstaller build failed.");
-  }
+function synchronizeBuildEnvironment() {
+  runBootstrapPython([
+    "-m",
+    "uv",
+    "sync",
+    "--project",
+    ".",
+    "--frozen",
+    "--group",
+    "dev",
+    "--inexact",
+    "--no-install-project",
+  ]);
 }
 
 function main() {
@@ -69,6 +68,7 @@ function main() {
   fs.mkdirSync(buildRootDirectory, { recursive: true });
 
   try {
+    synchronizeBuildEnvironment();
     runPyInstaller();
   } finally {
     removePath(workDirectory);

@@ -121,6 +121,7 @@ export interface DashboardIssue {
   body: string;
   closedAt: string | null;
   createdAt: string | null;
+  detailsLoaded: boolean;
   firstSeenAt: string;
   githubId: number;
   htmlUrl: string;
@@ -156,7 +157,49 @@ export interface LocalSessionStatus {
 
 export interface LocalSessionPayload {
   token?: string;
-  username: string;
+}
+
+export type HistoryWindowUnit = "days" | "months" | "years";
+export type AutoRefreshUnit = "minutes" | "hours" | "days";
+
+export interface HistoryWindowPreferences {
+  amount: number;
+  unit: HistoryWindowUnit;
+  unlimited: boolean;
+}
+
+export interface AutoRefreshPreferences {
+  amount: number;
+  enabled: boolean;
+  unit: AutoRefreshUnit;
+}
+
+export interface DashboardPreferences {
+  autoRefresh: AutoRefreshPreferences;
+  closedIssueHistory: HistoryWindowPreferences;
+  linkedPullRequestsCollapsed: boolean;
+  pullRequestHistory: HistoryWindowPreferences;
+  sidebar: {
+    collapsed: boolean;
+    width: number;
+  };
+  theme: ThemeMode;
+  version: number;
+  zoomFactor: number;
+}
+
+export interface SynchronizationStatus {
+  finishedAt: string | null;
+  issuesRefreshedAt: string | null;
+  pullRequestsRefreshedAt: string | null;
+  startedAt: string | null;
+  state: "idle" | "running" | "succeeded" | "partial";
+  warnings: string[];
+}
+
+export interface SynchronizationResponse {
+  started: boolean;
+  status: SynchronizationStatus;
 }
 
 export interface SyncStateItem {

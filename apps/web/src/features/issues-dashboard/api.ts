@@ -1,10 +1,13 @@
 import type {
   ClosedWindowOption,
+  DashboardIssue,
+  DashboardPreferences,
   LocalSessionPayload,
   LocalSessionStatus,
   PullRequestDashboardResponse,
   PullRequestWindowOption,
   SnapshotResponse,
+  SynchronizationResponse,
   SyncStateItem,
 } from "@/features/issues-dashboard/types";
 
@@ -46,6 +49,15 @@ function getApiBaseUrl(): string {
 
 function getDesktopBridge() {
   return typeof window === "undefined" ? undefined : window.githubIssuesDesktop;
+}
+
+function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  const runtimeSecret = getDesktopBridge()?.runtimeSecret;
+  if (runtimeSecret) {
+    headers.set("X-Dashboard-Runtime-Secret", runtimeSecret);
+  }
+  return fetch(input, { ...init, headers });
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -121,25 +133,68 @@ export async function getIssuesSnapshot(
 ): Promise<SnapshotResponse> {
   const url = new URL(`${getApiBaseUrl()}/api/issues/snapshot`);
   url.searchParams.set("closed_window", closedWindow);
+  url.searchParams.set("compact", "true");
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     cache: "no-store",
   });
 
   return parseResponse<SnapshotResponse>(response);
 }
 
+export async function getIssueDetail(
+  issueKey: string,
+): Promise<DashboardIssue> {
+  const encodedIssueKey = issueKey
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const response = await apiFetch(
+    `${getApiBaseUrl()}/api/issues/${encodedIssueKey}`,
+    { cache: "no-store" },
+  );
+  return parseResponse<DashboardIssue>(response);
+}
+
 export async function getPullRequestDashboard(
   windowOption: PullRequestWindowOption,
-  refresh = false,
 ): Promise<PullRequestDashboardResponse> {
   const url = new URL(`${getApiBaseUrl()}/api/github/pull-requests`);
   url.searchParams.set("window", windowOption);
-  url.searchParams.set("refresh", String(refresh));
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     cache: "no-store",
   });
   return parseResponse<PullRequestDashboardResponse>(response);
+}
+
+export async function getDashboardPreferences(): Promise<DashboardPreferences> {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/preferences`, {
+    cache: "no-store",
+  });
+  return parseResponse<DashboardPreferences>(response);
+}
+
+export async function saveDashboardPreferences(
+  preferences: DashboardPreferences,
+): Promise<DashboardPreferences> {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/preferences`, {
+    body: JSON.stringify(preferences),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  return parseResponse<DashboardPreferences>(response);
+}
+
+export async function synchronizeDashboard(
+  closedWindow: ClosedWindowOption,
+  pullRequestWindow: PullRequestWindowOption,
+): Promise<SynchronizationResponse> {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/synchronization`, {
+    body: JSON.stringify({ closedWindow, pullRequestWindow }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  return parseResponse<SynchronizationResponse>(response);
 }
 
 export async function getLocalSessionStatus(): Promise<LocalSessionStatus> {
@@ -148,7 +203,7 @@ export async function getLocalSessionStatus(): Promise<LocalSessionStatus> {
     return desktopSession();
   }
 
-  const response = await fetch(`${getApiBaseUrl()}/api/session/status`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/session/status`, {
     cache: "no-store",
   });
 
@@ -194,7 +249,7 @@ export async function saveLocalSession(
     return saveDesktopSession(payload);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}/api/session`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/session`, {
     body: JSON.stringify(payload),
     headers: {
       "Content-Type": "application/json",
@@ -211,7 +266,7 @@ export async function clearLocalSession(): Promise<LocalSessionStatus> {
     return clearDesktopSession();
   }
 
-  const response = await fetch(`${getApiBaseUrl()}/api/session`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/session`, {
     method: "DELETE",
   });
 
@@ -231,7 +286,7 @@ function buildIssueReferencePayload(state: SyncStateItem) {
 export async function updateIssuePriority(
   state: SyncStateItem,
 ): Promise<number> {
-  const response = await fetch(`${getApiBaseUrl()}/api/issues/priority`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/priority`, {
     body: JSON.stringify({
       ...buildIssueReferencePayload(state),
       priority: state.state.priority,
@@ -249,7 +304,7 @@ export async function updateIssuePriority(
 export async function updateIssuePinState(
   state: SyncStateItem,
 ): Promise<number> {
-  const response = await fetch(`${getApiBaseUrl()}/api/issues/pin`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/pin`, {
     body: JSON.stringify({
       ...buildIssueReferencePayload(state),
       isPinned: state.state.isPinned,
@@ -267,7 +322,7 @@ export async function updateIssuePinState(
 export async function updateIssueCompletionState(
   state: SyncStateItem,
 ): Promise<number> {
-  const response = await fetch(`${getApiBaseUrl()}/api/issues/completion`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/completion`, {
     body: JSON.stringify({
       ...buildIssueReferencePayload(state),
       isCompleted: state.state.localCompletedAt !== null,
@@ -287,7 +342,7 @@ export async function updateIssueCompletionState(
 }
 
 export async function updateIssueNotes(state: SyncStateItem): Promise<number> {
-  const response = await fetch(`${getApiBaseUrl()}/api/issues/notes`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/notes`, {
     body: JSON.stringify({
       ...buildIssueReferencePayload(state),
       lastInteractedAt: state.state.lastInteractedAt,
@@ -312,7 +367,7 @@ export async function syncIssueStates(
     return { ...item, state: sanitizedState };
   });
 
-  const response = await fetch(`${getApiBaseUrl()}/api/issues/sync-state`, {
+  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/sync-state`, {
     body: JSON.stringify({ states: sanitizedStates }),
     headers: {
       "Content-Type": "application/json",

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": false,
+    "forceConsistentCasingInFileNames": true,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmitOnError": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "strict": false,
+    "target": "ES2022",
+    "types": ["node", "electron"]
+  },
+  "include": ["backend-health.ts", "main.ts", "preload.ts", "session-store.ts"]
+}

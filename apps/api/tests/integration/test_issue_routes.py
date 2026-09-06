@@ -6,17 +6,22 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase
+from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
 from dashboard_api.app.main import create_app
-from dashboard_api.application.issues.service import AssignedIssuesFetchResult
+from dashboard_api.application.issues.service import (
+    AssignedIssuesFetchResult,
+    PullRequestFetchResult,
+)
 from dashboard_api.domain.issues.defaults import build_issue_key
 from dashboard_api.domain.issues.models import (
     ClosedIssueWindow,
     GitHubAssignedIssue,
     GitHubProjectFieldValue,
     GitHubProjectItem,
+    PullRequestWindow,
 )
 from dashboard_api.settings import AppSettings
 from dashboard_api.shared.time import subtract_months, utc_now
@@ -51,6 +56,7 @@ class FakeGitHubAssignedIssuesClient:
         """Store the issues that the fake gateway should return."""
         self.issues = issues
         self.project_fields_warning = project_fields_warning
+        self.issue_fetch_count = 0
 
     def can_refresh(self) -> bool:
         """Pretend that GitHub credentials are configured."""
@@ -61,10 +67,21 @@ class FakeGitHubAssignedIssuesClient:
         _closed_window: ClosedIssueWindow | None,
     ) -> AssignedIssuesFetchResult:
         """Return the configured fake issues."""
+        self.issue_fetch_count += 1
         return AssignedIssuesFetchResult(
             issues=self.issues,
             project_fields_warning=self.project_fields_warning,
         )
+
+    def fetch_pull_requests(
+        self,
+        _window: PullRequestWindow,
+        *,
+        force: bool = False,
+    ) -> PullRequestFetchResult:
+        """Return an empty Pull Request feed for unified synchronization."""
+        del force
+        return PullRequestFetchResult(pull_requests=())
 
 
 def _build_issue(
@@ -151,6 +168,12 @@ class IssueRoutesIntegrationTests(TestCase):
         app = create_app(settings=settings, github_client=self.fake_client)
         self._client_context = TestClient(app)
         self.client = self._client_context.__enter__()
+        synchronization_response = self.client.post(
+            "/api/synchronization",
+            json={"closedWindow": "all", "pullRequestWindow": "1m"},
+        )
+        if synchronization_response.status_code != HTTP_OK:
+            raise AssertionError(synchronization_response.text)
 
     def tearDown(self) -> None:
         """Dispose the test client and temporary storage."""
@@ -166,6 +189,18 @@ class IssueRoutesIntegrationTests(TestCase):
 
         if response.status_code != HTTP_OK:
             message = "Expected a successful snapshot response."
+            raise AssertionError(message)
+        issue = next(
+            item
+            for item in response.json()["issues"]
+            if item["number"] == OPEN_ISSUE_NUMBER
+        )
+        project_item = issue["projectItems"][0]
+        if project_item["projectTitle"] != "Roadmap":
+            message = "Expected the Project title in the snapshot."
+            raise AssertionError(message)
+        if project_item["fields"][0]["value"] != "In Review":
+            message = "Expected the Project Status in the snapshot."
             raise AssertionError(message)
         payload = response.json()
         returned_issue_keys = [issue["issueKey"] for issue in payload["issues"]]
@@ -206,17 +241,45 @@ class IssueRoutesIntegrationTests(TestCase):
         if response.status_code != HTTP_OK:
             message = "Expected a successful snapshot response."
             raise AssertionError(message)
-        issue = next(
+
+    def test_compact_snapshot_defers_heavy_details_to_local_detail_route(
+        self,
+    ) -> None:
+        """Keep list reads small and load full issue content without GitHub."""
+        fetch_count_before_reads = self.fake_client.issue_fetch_count
+        compact_response = self.client.get(
+            "/api/issues/snapshot",
+            params={"closed_window": "1m", "compact": True},
+        )
+
+        if compact_response.status_code != HTTP_OK:
+            raise AssertionError(compact_response.text)
+        compact_issue = next(
             item
-            for item in response.json()["issues"]
+            for item in compact_response.json()["issues"]
             if item["number"] == OPEN_ISSUE_NUMBER
         )
-        project_item = issue["projectItems"][0]
-        if project_item["projectTitle"] != "Roadmap":
-            message = "Expected the Project title in the snapshot."
+        if compact_issue["detailsLoaded"] is not False:
+            message = "Expected compact issues to advertise deferred details."
             raise AssertionError(message)
-        if project_item["fields"][0]["value"] != "In Review":
-            message = "Expected the Project Status in the snapshot."
+        if compact_issue["body"] or compact_issue["localState"]["noteBlocks"]:
+            message = "Expected compact issues to omit body and note content."
+            raise AssertionError(message)
+        if compact_issue["projectItems"][0]["linkedPullRequests"]:
+            message = "Expected compact issues to omit linked PR details."
+            raise AssertionError(message)
+
+        detail_response = self.client.get(
+            f"/api/issues/{quote(compact_issue['issueKey'], safe='')}",
+        )
+        if detail_response.status_code != HTTP_OK:
+            raise AssertionError(detail_response.text)
+        detail = detail_response.json()
+        if detail["detailsLoaded"] is not True or not detail["body"]:
+            message = "Expected the local detail route to return complete content."
+            raise AssertionError(message)
+        if self.fake_client.issue_fetch_count != fetch_count_before_reads:
+            message = "Expected cache and detail reads to avoid GitHub entirely."
             raise AssertionError(message)
 
     def test_snapshot_preserves_project_fields_after_enrichment_warning(self) -> None:
@@ -234,6 +297,13 @@ class IssueRoutesIntegrationTests(TestCase):
         )
         self.fake_client.project_fields_warning = "Projects unavailable."
 
+        synchronization_response = self.client.post(
+            "/api/synchronization",
+            json={"closedWindow": "1m", "pullRequestWindow": "1m"},
+        )
+        if synchronization_response.status_code != HTTP_OK:
+            raise AssertionError(synchronization_response.text)
+
         warning_response = self.client.get(
             "/api/issues/snapshot",
             params={"closed_window": "1"},
@@ -249,8 +319,9 @@ class IssueRoutesIntegrationTests(TestCase):
         if issue["projectItems"][0]["projectTitle"] != "Roadmap":
             message = "Expected cached Projects metadata to survive the warning."
             raise AssertionError(message)
-        if payload["meta"]["projectFieldsWarning"] != "Projects unavailable.":
-            message = "Expected the Projects warning to remain visible in metadata."
+        warnings = synchronization_response.json()["status"]["warnings"]
+        if warnings != ["Projects unavailable."]:
+            message = "Expected the explicit synchronization to report the warning."
             raise AssertionError(message)
 
     def test_snapshot_accepts_manual_positive_month_values(self) -> None:

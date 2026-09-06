@@ -19,44 +19,40 @@ export function useGitHubActivity({
   const [pullRequests, setPullRequests] = useState<GitHubPullRequest[]>([]);
   const [pullRequestWarning, setPullRequestWarning] = useState("");
   const [isFetchingPullRequests, setIsFetchingPullRequests] = useState(false);
+  const [loadedPullRequestWindow, setLoadedPullRequestWindow] =
+    useState<PullRequestWindowOption | null>(null);
   const [pullRequestsRefreshedAt, setPullRequestsRefreshedAt] = useState<
     string | null
   >(null);
   const pullRequestRequestIdRef = useRef(0);
 
-  const requestPullRequests = useCallback(
-    async (refresh: boolean) => {
-      if (!enabled) return;
-      const requestId = pullRequestRequestIdRef.current + 1;
-      pullRequestRequestIdRef.current = requestId;
-      if (refresh) setIsFetchingPullRequests(true);
-      try {
-        const dashboard = await getPullRequestDashboard(
-          pullRequestWindow,
-          refresh,
-        );
-        if (requestId !== pullRequestRequestIdRef.current) return;
-        setPullRequests(dashboard.pullRequests);
-        setPullRequestWarning(dashboard.warning ?? "");
-        setPullRequestsRefreshedAt(dashboard.refreshedAt);
-      } catch (error) {
-        if (requestId !== pullRequestRequestIdRef.current) return;
-        setPullRequestWarning(
-          error instanceof Error
-            ? error.message
-            : "No se pudieron cargar las Pull Requests.",
-        );
-      } finally {
-        if (refresh && requestId === pullRequestRequestIdRef.current) {
-          setIsFetchingPullRequests(false);
-        }
+  const requestPullRequests = useCallback(async () => {
+    const requestId = pullRequestRequestIdRef.current + 1;
+    pullRequestRequestIdRef.current = requestId;
+    setIsFetchingPullRequests(true);
+    try {
+      const dashboard = await getPullRequestDashboard(pullRequestWindow);
+      if (requestId !== pullRequestRequestIdRef.current) return;
+      setPullRequests(dashboard.pullRequests);
+      setPullRequestWarning(dashboard.warning ?? "");
+      setPullRequestsRefreshedAt(dashboard.refreshedAt);
+    } catch (error) {
+      if (requestId !== pullRequestRequestIdRef.current) return;
+      setPullRequestWarning(
+        error instanceof Error
+          ? error.message
+          : "No se pudieron cargar las Pull Requests.",
+      );
+    } finally {
+      if (requestId === pullRequestRequestIdRef.current) {
+        setLoadedPullRequestWindow(pullRequestWindow);
+        setIsFetchingPullRequests(false);
       }
-    },
-    [enabled, pullRequestWindow],
-  );
+    }
+  }, [pullRequestWindow]);
 
   const refreshPullRequests = useCallback(
-    () => requestPullRequests(true),
+    () => requestPullRequests(),
     [requestPullRequests],
   );
   const visiblePullRequests = useMemo(
@@ -65,11 +61,19 @@ export function useGitHubActivity({
   );
 
   useEffect(() => {
-    if (!enabled) return;
-    void requestPullRequests(false);
-  }, [enabled, requestPullRequests]);
+    if (!enabled || loadedPullRequestWindow === pullRequestWindow) return;
+    void requestPullRequests();
+  }, [
+    enabled,
+    loadedPullRequestWindow,
+    pullRequestWindow,
+    requestPullRequests,
+  ]);
+
+  const hasLoadedPullRequests = loadedPullRequestWindow === pullRequestWindow;
 
   return {
+    hasLoadedPullRequests,
     isFetchingPullRequests,
     pullRequestWarning,
     pullRequests: visiblePullRequests,

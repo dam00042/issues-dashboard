@@ -15,8 +15,11 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const apiExecutablePath = path.join(
   apiDirectory,
   "dist-electron",
+  "dashboard-api",
   "dashboard-api.exe",
 );
+const apiBundleDirectory = path.dirname(apiExecutablePath);
+const apiDistDirectory = path.join(apiDirectory, "dist-electron");
 const apiWorkDirectory = path.join(apiDirectory, "build-electron");
 const webOutputPath = path.join(webDirectory, "out");
 const portableReleaseDirectory = path.join(
@@ -169,59 +172,50 @@ function prepareDirectories() {
   fs.mkdirSync(releaseDirectory, { recursive: true });
 }
 
-function ensureBuildArtifacts() {
-  if (!fs.existsSync(path.join(webOutputPath, "index.html"))) {
-    runCommand(npmCommand, ["run", "build"], webDirectory);
-  }
-
+function buildFreshArtifacts() {
+  runCommand(npmCommand, ["run", "build"], webDirectory);
+  runCommand(npmCommand, ["run", "build:exe"], apiDirectory);
   if (!fs.existsSync(apiExecutablePath)) {
-    runCommand(npmCommand, ["run", "build:exe"], apiDirectory);
+    throw new Error("The packaged API executable was not produced.");
   }
 }
 
 function copyRequiredAssets() {
-  const tweetNaclPath = path.join(repositoryRoot, "node_modules", "tweetnacl");
-
   fs.mkdirSync(path.join(stageDirectory, "backend"), { recursive: true });
-  fs.mkdirSync(path.join(stageDirectory, "node_modules"), { recursive: true });
 
   fs.cpSync(
-    path.join(desktopDirectory, "main.cjs"),
-    path.join(stageDirectory, "main.cjs"),
+    path.join(desktopDirectory, "dist", "backend-health.js"),
+    path.join(stageDirectory, "backend-health.js"),
   );
   fs.cpSync(
-    path.join(desktopDirectory, "preload.cjs"),
-    path.join(stageDirectory, "preload.cjs"),
+    path.join(desktopDirectory, "dist", "main.js"),
+    path.join(stageDirectory, "main.js"),
   );
   fs.cpSync(
-    path.join(desktopDirectory, "session-store.cjs"),
-    path.join(stageDirectory, "session-store.cjs"),
+    path.join(desktopDirectory, "dist", "preload.js"),
+    path.join(stageDirectory, "preload.js"),
+  );
+  fs.cpSync(
+    path.join(desktopDirectory, "dist", "session-store.js"),
+    path.join(stageDirectory, "session-store.js"),
   );
   fs.cpSync(assetDirectory, path.join(stageDirectory, "assets"), {
     recursive: true,
   });
-  fs.cpSync(
-    tweetNaclPath,
-    path.join(stageDirectory, "node_modules", "tweetnacl"),
-    { recursive: true },
-  );
   fs.cpSync(webOutputPath, path.join(stageDirectory, "web"), {
     recursive: true,
   });
-  fs.cpSync(
-    apiExecutablePath,
-    path.join(stageDirectory, "backend", "dashboard-api.exe"),
-  );
+  fs.cpSync(apiBundleDirectory, path.join(stageDirectory, "backend"), {
+    recursive: true,
+  });
 }
 
 function writeStagePackageManifest() {
   const packageManifest = {
     author: "GitHub Issues Dashboard",
-    dependencies: {
-      tweetnacl: "1.0.3",
-    },
+    dependencies: {},
     description: "Desktop shell for GitHub Issues Dashboard",
-    main: "main.cjs",
+    main: "main.js",
     name: "github-issues-dashboard-desktop",
     productName: "GitHub Issues Dashboard",
     version: "0.1.0",
@@ -272,14 +266,14 @@ async function buildDesktopRelease() {
 
 function cleanupIntermediateArtifacts() {
   removePath(stageDirectory);
-  removePath(apiExecutablePath);
+  removePath(apiDistDirectory);
   removePath(apiWorkDirectory);
   removePath(webOutputPath);
 }
 
 async function main() {
   prepareDirectories();
-  ensureBuildArtifacts();
+  buildFreshArtifacts();
   copyRequiredAssets();
   writeStagePackageManifest();
   await buildDesktopRelease();

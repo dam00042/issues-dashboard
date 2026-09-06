@@ -93,3 +93,7 @@ body[data-issue-drag-active="true"] .issue-card-actions {
   pointer-events: none;
   opacity: 0;
 }
+
+body[data-issue-drag-active="true"] .issue-card {
+  transition: none;
+}

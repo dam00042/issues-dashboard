@@ -10,7 +10,7 @@ import {
   Pin,
   RotateCcw,
 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import type { DashboardIssue } from "@/features/issues-dashboard/types";
@@ -24,6 +24,7 @@ export interface IssueCardProps {
   isDragging?: boolean;
   isSelected: boolean;
   issue: DashboardIssue;
+  onIssuePrefetch?: (issueKey: string) => void;
   onIssueSelect: (issueKey: string) => void;
   onCompleteIssue?: (issueKey: string) => void;
   onReviewIssue?: (issueKey: string) => void;
@@ -36,6 +37,7 @@ export const IssueCard = memo(function IssueCard({
   isDragging,
   isSelected,
   issue,
+  onIssuePrefetch,
   onIssueSelect,
   onCompleteIssue,
   onReviewIssue,
@@ -43,12 +45,16 @@ export const IssueCard = memo(function IssueCard({
   onTogglePin,
   style,
 }: IssueCardProps) {
+  const [showActions, setShowActions] = useState(false);
+
   return (
+    // A button cannot contain the card's independent action buttons.
+    // biome-ignore lint/a11y/useSemanticElements: this composite card has keyboard handling and nested controls.
     <div
       role="button"
       tabIndex={0}
       style={style}
-      className={`group relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,transform,opacity] duration-75 will-change-transform hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
+      className={`issue-card relative w-full cursor-pointer rounded-[0.9rem] border px-2.5 py-3 text-left transition-[border-color,background-color,box-shadow,opacity] duration-75 hover:border-[rgb(var(--app-accent))]/45 hover:bg-[rgb(var(--app-accent))]/4 active:cursor-grabbing ${
         isDragging
           ? "border-[rgb(var(--app-accent))]/55 bg-[rgb(var(--app-surface))] opacity-90 shadow-[0_18px_34px_-22px_rgba(0,0,0,0.5)]"
           : ""
@@ -57,103 +63,45 @@ export const IssueCard = memo(function IssueCard({
           ? "border-[rgb(var(--app-accent))]/65 bg-[rgb(var(--app-accent))]/8"
           : "border-[rgb(var(--app-border))]/65 bg-[rgb(var(--app-surface))]/94"
       }`}
-      onClick={() => onIssueSelect(issue.issueKey)}
+      onClick={(event) => {
+        if ((event.target as Element).closest("button, a")) return;
+        onIssueSelect(issue.issueKey);
+      }}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") onIssueSelect(issue.issueKey);
       }}
+      onFocusCapture={() => setShowActions(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setShowActions(false);
+        }
+      }}
+      onPointerEnter={() => {
+        setShowActions(true);
+        onIssuePrefetch?.(issue.issueKey);
+      }}
+      onPointerLeave={() => setShowActions(false)}
     >
-      <div aria-hidden className="absolute right-2.5 top-2.5 flex h-2 items-center gap-1.5">
+      <div
+        aria-hidden
+        className="absolute right-2.5 top-2.5 flex h-2 items-center gap-1.5"
+      >
         {issue.localState.isPinned ? (
           <Pin size={11} className="text-[rgb(var(--app-muted))]" />
         ) : null}
-        <span className={`shrink-0 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`} />
+        <span
+          className={`shrink-0 h-2 w-2 rounded-full ${getRemoteStateDotClassName(issue.remoteState)}`}
+        />
       </div>
 
-      <div
-        className="issue-card-actions absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <CopyButton url={issue.htmlUrl} iconSize={11} />
+      {showActions && !isDragging ? (
+        <div
+          className="issue-card-actions absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <CopyButton url={issue.htmlUrl} iconSize={11} />
 
-        <Tooltip closeDelay={0} delay={80}>
-          <Tooltip.Trigger>
-            <div className="inline-flex">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="outline"
-                className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                onPress={() => window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")}
-              >
-                <ExternalLink size={11} className="!size-[11px]" />
-              </Button>
-            </div>
-          </Tooltip.Trigger>
-          <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
-        </Tooltip>
-
-        {onTogglePin ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className={`h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
-                  onPress={() => onTogglePin(issue.issueKey)}
-                >
-                  <Pin
-                    size={11}
-                    className={`!size-[11px] ${issue.localState.isPinned ? "fill-current" : ""}`}
-                  />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>{issue.localState.isPinned ? "Desfijar" : "Fijar"}</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onReviewIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[#d97706]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[#d97706] shadow-sm hover:bg-[#d97706]/15"
-                  onPress={() => onReviewIssue(issue.issueKey)}
-                >
-                  <Eye size={11} className="!size-[11px]" />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Mandar a revisión</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onCompleteIssue ? (
-          <Tooltip closeDelay={0} delay={80}>
-            <Tooltip.Trigger>
-              <div className="inline-flex">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="outline"
-                  className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-open))]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-open))] shadow-sm hover:bg-[rgb(var(--app-open))]/15"
-                  onPress={() => onCompleteIssue(issue.issueKey)}
-                >
-                  <CheckCheck size={11} className="!size-[11px]" />
-                </Button>
-              </div>
-            </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Completar localmente</Tooltip.Content>
-          </Tooltip>
-        ) : null}
-
-        {onRestoreIssue ? (
           <Tooltip closeDelay={0} delay={80}>
             <Tooltip.Trigger>
               <div className="inline-flex">
@@ -162,16 +110,101 @@ export const IssueCard = memo(function IssueCard({
                   size="sm"
                   variant="outline"
                   className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
-                  onPress={() => onRestoreIssue(issue.issueKey)}
+                  onPress={() =>
+                    window.open(issue.htmlUrl, "_blank", "noopener,noreferrer")
+                  }
                 >
-                  <RotateCcw size={11} className="!size-[11px]" />
+                  <ExternalLink size={11} className="!size-[11px]" />
                 </Button>
               </div>
             </Tooltip.Trigger>
-            <Tooltip.Content showArrow>Restaurar al dashboard</Tooltip.Content>
+            <Tooltip.Content showArrow>Abrir en GitHub</Tooltip.Content>
           </Tooltip>
-        ) : null}
-      </div>
+
+          {onTogglePin ? (
+            <Tooltip closeDelay={0} delay={80}>
+              <Tooltip.Trigger>
+                <div className="inline-flex">
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="outline"
+                    className={`h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))] ${issue.localState.isPinned ? "border-[rgb(var(--app-accent))]/40 text-[rgb(var(--app-foreground))]" : ""}`}
+                    onPress={() => onTogglePin(issue.issueKey)}
+                  >
+                    <Pin
+                      size={11}
+                      className={`!size-[11px] ${issue.localState.isPinned ? "fill-current" : ""}`}
+                    />
+                  </Button>
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content showArrow>
+                {issue.localState.isPinned ? "Desfijar" : "Fijar"}
+              </Tooltip.Content>
+            </Tooltip>
+          ) : null}
+
+          {onReviewIssue ? (
+            <Tooltip closeDelay={0} delay={80}>
+              <Tooltip.Trigger>
+                <div className="inline-flex">
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="outline"
+                    className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[#d97706]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[#d97706] shadow-sm hover:bg-[#d97706]/15"
+                    onPress={() => onReviewIssue(issue.issueKey)}
+                  >
+                    <Eye size={11} className="!size-[11px]" />
+                  </Button>
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content showArrow>Mandar a revisión</Tooltip.Content>
+            </Tooltip>
+          ) : null}
+
+          {onCompleteIssue ? (
+            <Tooltip closeDelay={0} delay={80}>
+              <Tooltip.Trigger>
+                <div className="inline-flex">
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="outline"
+                    className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-open))]/50 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-open))] shadow-sm hover:bg-[rgb(var(--app-open))]/15"
+                    onPress={() => onCompleteIssue(issue.issueKey)}
+                  >
+                    <CheckCheck size={11} className="!size-[11px]" />
+                  </Button>
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content showArrow>Completar localmente</Tooltip.Content>
+            </Tooltip>
+          ) : null}
+
+          {onRestoreIssue ? (
+            <Tooltip closeDelay={0} delay={80}>
+              <Tooltip.Trigger>
+                <div className="inline-flex">
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="outline"
+                    className="h-[22px] w-[22px] min-w-[22px] rounded-[0.4rem] border-[rgb(var(--app-border))]/80 bg-[rgb(var(--app-surface-strong))]/95 text-[rgb(var(--app-muted))] shadow-sm hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-foreground))]"
+                    onPress={() => onRestoreIssue(issue.issueKey)}
+                  >
+                    <RotateCcw size={11} className="!size-[11px]" />
+                  </Button>
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content showArrow>
+                Restaurar al dashboard
+              </Tooltip.Content>
+            </Tooltip>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="pr-4 text-[0.61rem] font-semibold uppercase tracking-[0.14em] text-[rgb(var(--app-muted))]">
         {issue.repository.name} #{issue.number}
@@ -241,7 +274,9 @@ const IssueDragPreview = memo(function IssueDragPreview({
 
 export function IssueDragOverlay() {
   const { active, activeNodeRect } = useDndContext();
-  const draggedIssue = active?.data.current?.issue as DashboardIssue | undefined;
+  const draggedIssue = active?.data.current?.issue as
+    | DashboardIssue
+    | undefined;
 
   return (
     <DragOverlay dropAnimation={null} style={DRAG_OVERLAY_STYLE}>
@@ -263,12 +298,7 @@ export const DraggableIssueCard = memo(function DraggableIssueCard(
   });
 
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className="touch-none"
-    >
+    <div ref={setNodeRef} {...listeners} {...attributes} className="touch-none">
       <IssueCard {...props} isDragging={isDragging} />
     </div>
   );

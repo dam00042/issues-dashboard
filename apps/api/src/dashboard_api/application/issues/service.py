@@ -169,6 +169,9 @@ class TrackedIssuesRepository(Protocol):
     ) -> tuple[TrackedIssue, ...]:
         """List the issues visible for the requested closed-window filter."""
 
+    def get_issues_refreshed_at(self) -> str | None:
+        """Return when the remote issue projection was refreshed."""
+
     def get_tracked_issue(self, issue_key: str) -> TrackedIssue | None:
         """Return one tracked issue when it has already been persisted."""
 
@@ -202,7 +205,7 @@ class IssueLocalStateTarget:
 
 
 class IssueDashboardSnapshotService:
-    """Build merged dashboard snapshots from GitHub and local persistence."""
+    """Read local snapshots and explicitly refresh their remote projection."""
 
     def __init__(
         self,
@@ -217,10 +220,27 @@ class IssueDashboardSnapshotService:
         self,
         closed_window: ClosedIssueWindow | None,
     ) -> IssueDashboardSnapshot:
-        """Build a merged dashboard snapshot for the requested filter."""
-        source: SnapshotSource = "cache"
-        project_fields_warning: str | None = None
+        """Build a snapshot exclusively from local persistence."""
+        issues = self._repository.list_visible_issues(closed_window)
+        return IssueDashboardSnapshot(
+            issues=issues,
+            source="cache",
+            refreshed_at=self._repository.get_issues_refreshed_at() or utc_now_iso(),
+            closed_window=closed_window,
+            project_fields_warning=None,
+        )
 
+    def get_issue(self, issue_key: str) -> TrackedIssue | None:
+        """Return one complete issue from local persistence only."""
+        return self._repository.get_tracked_issue(issue_key)
+
+    def refresh_snapshot(
+        self,
+        closed_window: ClosedIssueWindow | None,
+    ) -> IssueDashboardSnapshot:
+        """Refresh GitHub once, persist changes and return the local snapshot."""
+        project_fields_warning: str | None = None
+        source: SnapshotSource = "cache"
         if self._gateway.can_refresh():
             try:
                 fetch_result = self._gateway.fetch_assigned_issues(closed_window)
@@ -228,8 +248,7 @@ class IssueDashboardSnapshotService:
                 raise
             except httpx.HTTPError as error:
                 LOGGER.warning(
-                    "Falling back to cached dashboard data after a GitHub refresh "
-                    "failure: %s",
+                    "Keeping cached dashboard data after a GitHub failure: %s",
                     error,
                 )
             else:
@@ -240,12 +259,10 @@ class IssueDashboardSnapshotService:
                 project_fields_warning = fetch_result.project_fields_warning
                 source = "live"
 
-        issues = self._repository.list_visible_issues(closed_window)
-        return IssueDashboardSnapshot(
-            issues=issues,
+        snapshot = self.build_snapshot(closed_window)
+        return replace(
+            snapshot,
             source=source,
-            refreshed_at=utc_now_iso(),
-            closed_window=closed_window,
             project_fields_warning=project_fields_warning,
         )
 

@@ -14,7 +14,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import type {
   GitHubPullRequest,
@@ -191,7 +191,11 @@ function getReviewParticipantLabel(pullRequest: GitHubPullRequest): string {
   return `${pullRequest.reviewerLogins.length === 1 ? "Reviewer" : "Reviewers"}: ${reviewers}`;
 }
 
-function PullRequestCard({ pullRequest }: { pullRequest: GitHubPullRequest }) {
+const PullRequestCard = memo(function PullRequestCard({
+  pullRequest,
+}: {
+  pullRequest: GitHubPullRequest;
+}) {
   const StateIcon = pullRequest.state === "merged" ? GitMerge : GitPullRequest;
 
   return (
@@ -256,7 +260,7 @@ function PullRequestCard({ pullRequest }: { pullRequest: GitHubPullRequest }) {
       </div>
     </article>
   );
-}
+});
 
 function PullRequestQuadrant({
   emptyMessage,
@@ -273,8 +277,12 @@ function PullRequestQuadrant({
   title: string;
   onFilterChange: (filter: SelectablePullRequestStateFilter) => void;
 }) {
-  const filteredPullRequests = pullRequests.filter((pullRequest) =>
-    matchesPullRequestFilter(pullRequest, filter),
+  const filteredPullRequests = useMemo(
+    () =>
+      pullRequests.filter((pullRequest) =>
+        matchesPullRequestFilter(pullRequest, filter),
+      ),
+    [filter, pullRequests],
   );
 
   return (
@@ -322,50 +330,46 @@ function PullRequestQuadrant({
   );
 }
 
-export function PullRequestsBoard({
+export const PullRequestsBoard = memo(function PullRequestsBoard({
   pullRequests,
-  warning,
 }: {
   pullRequests: GitHubPullRequest[];
-  warning: string;
 }) {
   const [authoredFilter, setAuthoredFilter] =
     useState<SelectablePullRequestStateFilter>("open");
   const [requestedFilter, setRequestedFilter] =
     useState<SelectablePullRequestStateFilter>("open");
-  const authored = pullRequests.filter(
-    (pullRequest) => pullRequest.viewerRole === "authored",
-  );
-  const requested = pullRequests.filter(
-    (pullRequest) => pullRequest.viewerRole !== "authored",
-  );
+  const { authored, requested } = useMemo(() => {
+    const groups = {
+      authored: [] as GitHubPullRequest[],
+      requested: [] as GitHubPullRequest[],
+    };
+    for (const pullRequest of pullRequests) {
+      groups[
+        pullRequest.viewerRole === "authored" ? "authored" : "requested"
+      ].push(pullRequest);
+    }
+    return groups;
+  }, [pullRequests]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      {warning ? (
-        <div className="px-1">
-          <p className="text-xs text-[rgb(var(--app-muted))]">{warning}</p>
-        </div>
-      ) : null}
-
-      <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
-        <PullRequestQuadrant
-          emptyMessage="No hay Pull Requests creadas por ti en esta vista."
-          filter={authoredFilter}
-          icon={GitPullRequest}
-          pullRequests={authored}
-          title="PRs solicitadas por mí"
-          onFilterChange={setAuthoredFilter}
-        />
-        <PullRequestQuadrant
-          emptyMessage="No tienes revisiones solicitadas ni PRs revisadas recientemente."
-          filter={requestedFilter}
-          icon={UserCheck}
-          pullRequests={requested}
-          title="PRs que me solicitan"
-          onFilterChange={setRequestedFilter}
-        />
-      </div>
+    <div className="grid h-full min-h-0 gap-3 md:grid-cols-2">
+      <PullRequestQuadrant
+        emptyMessage="No hay Pull Requests creadas por ti en esta vista."
+        filter={authoredFilter}
+        icon={GitPullRequest}
+        pullRequests={authored}
+        title="PRs solicitadas por mí"
+        onFilterChange={setAuthoredFilter}
+      />
+      <PullRequestQuadrant
+        emptyMessage="No tienes revisiones solicitadas ni PRs revisadas recientemente."
+        filter={requestedFilter}
+        icon={UserCheck}
+        pullRequests={requested}
+        title="PRs que me solicitan"
+        onFilterChange={setRequestedFilter}
+      />
     </div>
   );
-}
+});

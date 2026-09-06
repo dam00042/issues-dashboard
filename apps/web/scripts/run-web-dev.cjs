@@ -194,15 +194,7 @@ async function main() {
 
   const childProcess = spawn(
     process.execPath,
-    [
-      nextBinaryPath,
-      "dev",
-      "--webpack",
-      "--hostname",
-      host,
-      "--port",
-      String(port),
-    ],
+    [nextBinaryPath, "dev", "--hostname", host, "--port", String(port)],
     {
       cwd: workspaceDirectory,
       env: process.env,

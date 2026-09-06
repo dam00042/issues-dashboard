@@ -2,389 +2,164 @@
 
 ![Issues Dashboard](docs/images/hero-dashboard.png)
 
-Espacio local-first para priorizar y gestionar incidencias asignadas en GitHub, disponible tanto en web como en escritorio.
+Aplicación de escritorio local-first para centralizar issues de GitHub, campos de Projects, Pull Requests, prioridades y notas privadas. El destino de producción es una aplicación autocontenida para Windows; el modo web se mantiene para desarrollo y revisión.
 
-English documentation is available in [README.md](README.md).
+Documentación en inglés: [README.md](README.md).
 
-## Índice
+## Qué incluye
 
-1. [Resumen](#resumen)2. 
-2. [Características principales](#características-principales)
-3. [Obtención del token de GitHub (gho_)](#obtención-del-token-de-github-gho_)
-4. [Arquitectura](#arquitectura)
-5. [Árbol del repositorio (detallado)](#árbol-del-repositorio-detallado)
-6. [Modos de ejecución](#modos-de-ejecución)
-7. [Resumen de la API](#resumen-de-la-api)
-8. [Configuración](#configuración)
-9. [Puesta en marcha](#puesta-en-marcha)
-10. [Comandos de calidad](#comandos-de-calidad)
-11. [Empaquetado de escritorio (Windows)](#empaquetado-de-escritorio-windows)
-12. [Modelo de seguridad](#modelo-de-seguridad)
-13. [Resolución de problemas](#resolución-de-problemas)
-
-## Resumen
-
-Issues Dashboard está pensado para personas desarrolladoras que necesitan clasificar rápidamente las incidencias de GitHub que tienen asignadas.
-
-El proyecto combina:
-
-- Un frontend en Next.js para priorización y edición de notas.
-- Un backend en FastAPI que fusiona datos de GitHub con estado local.
-- Un contenedor de escritorio con Electron que integra backend y persistencia local.
-
-La aplicación es local-first por diseño: la prioridad, notas, completado y metadatos de cada incidencia se guardan en SQLite local, de forma que el flujo de trabajo sigue siendo útil incluso cuando GitHub no responde temporalmente.
-
-## Características principales
-
-- Tablero por prioridad (Backlog, P1-P4 y sección de completadas).
-- Estado local por incidencia:
-  - prioridad
-  - fijado
-  - completada
-  - bloques de notas estructurados
-- Sincronización incremental con actualizaciones optimistas en la UI.
-- Filtro de ventana de incidencias cerradas (`1`, `3`, `6`, `12` o `all` meses).
-- Gestión de sesión local de GitHub.
-- Controles de escritorio para exportar e importar la base de datos SQLite.
-
-## Obtención del token de GitHub (gho_)
-
-Si tu token empieza por `gho_`, es totalmente normal: es un token OAuth emitido por GitHub CLI, no un token clásico `ghp_`.
-
-Flujo recomendado:
-
-1. Instala GitHub CLI (`gh`) si aún no lo tienes. Puedes utilizar los siguientes comandos para hacerlo:
-```
-iwr -useb get.scoop.sh | iex
- 
-scoop install gh
- 
-gh --status
- 
-gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
- 
-gh auth status
- 
-gh auth token
-```
-2. Inicia sesión y concede scopes para API:
-
-```bash
-gh auth login --hostname github.com --web --git-protocol https --scopes "repo,read:org"
-```
-
-3. Verifica la sesión activa:
-
-```bash
-gh auth status
-```
-
-4. Muestra el token actual de GitHub CLI:
-
-```bash
-gh auth token
-```
-
-La salida suele comenzar por `gho_`. Ese valor es el que debes pegar en el campo de token de la app, junto con tu nombre de usuario de GitHub.
-
-Notas de seguridad:
-
-- Trátalo como una contraseña.
-- No lo subas al repositorio ni lo compartas en capturas.
-- Puedes revocarlo en la configuración de tu cuenta de GitHub o cerrar sesión con `gh auth logout`.
+- Issues asignadas en GitHub, excluyendo Epics.
+- Separación clara entre el estado de GitHub (`Abierta`/`Cerrada`) y el `Status` de Projects.
+- Filtros dinámicos únicamente para Status, Sprint y Priority.
+- Tablero local de prioridades, fijado, revisión/cierre y notas estructuradas.
+- Panel de Pull Requests dividido entre las solicitadas por ti y las que requieren tu revisión, con filtros independientes.
+- Caché SQLite inmediata; GitHub solo se consulta mediante una sincronización explícita o programada.
+- Una copia portátil que contiene base de datos y ajustes.
+- Token controlado por Electron y cifrado con las credenciales seguras del sistema operativo.
 
 ## Arquitectura
 
-### Estructura del monorepo
-
 ```text
 apps/
-  api/       FastAPI + capas domain/application/infrastructure
-  web/       UI con Next.js App Router
-  desktop/   Electron y scripts de empaquetado
-scripts/     utilidades de orquestación en raíz
+  api/       Casos de uso FastAPI, adaptadores GitHub, SQLite, migraciones y copias
+  web/       UI estática Next.js, HeroUI e interacciones locales optimistas
+  desktop/   Runtime Electron en TypeScript y empaquetado determinista de Windows
+scripts/     Orquestación de desarrollo del monorepo
 ```
 
-## Árbol del repositorio (detallado)
+La UI nunca llama directamente a GitHub. Las lecturas salen de la API local y de SQLite. `POST /api/synchronization` es el único comando de refresco remoto general: actualiza issues, los tres campos necesarios de Projects, PRs enlazadas y el panel de PRs mediante una operación única que no se solapa consigo misma.
 
-El árbol siguiente se centra en código fuente y scripts de build, y omite cachés y entornos virtuales generados.
+SQLite utiliza WAL, conexiones cortas, proyecciones normalizadas e indexadas, upserts condicionales y migraciones de esquema. Al actualizar una base antigua, sus proyecciones JSON se migran a las tablas normalizadas sin exigir otro refresco de GitHub.
 
-```text
-.
-├─ apps/
-│  ├─ api/
-│  │  ├─ scripts/
-│  │  │  └─ build-exe.cjs
-│  │  ├─ src/
-│  │  │  └─ dashboard_api/
-│  │  │     ├─ app/main.py
-│  │  │     ├─ application/
-│  │  │     │  ├─ issues/service.py
-│  │  │     │  └─ session/service.py
-│  │  │     ├─ domain/issues/
-│  │  │     ├─ infrastructure/
-│  │  │     │  ├─ github/client.py
-│  │  │     │  ├─ persistence/sqlite_repository.py
-│  │  │     │  └─ session/local_session_store.py
-│  │  │     └─ presentation/http/
-│  │  │        ├─ routes/health.py
-│  │  │        ├─ routes/issues.py
-│  │  │        ├─ routes/session.py
-│  │  │        └─ schemas.py
-│  │  ├─ tests/
-│  │  │  ├─ integration/
-│  │  │  └─ unit/
-│  │  ├─ pyproject.toml
-│  │  └─ package.json
-│  ├─ web/
-│  │  ├─ src/
-│  │  │  ├─ app/
-│  │  │  ├─ features/issues-dashboard/
-│  │  │  │  ├─ api.ts
-│  │  │  │  ├─ dashboard-app.tsx
-│  │  │  │  ├─ dashboard-board.tsx
-│  │  │  │  ├─ dashboard-chrome.tsx
-│  │  │  │  └─ notes-block-editor.tsx
-│  │  │  └─ types/desktop.d.ts
-│  │  ├─ scripts/run-web-dev.cjs
-│  │  └─ package.json
-│  └─ desktop/
-│     ├─ scripts/
-│     │  ├─ build-desktop.cjs
-│     │  └─ run-electron.cjs
-│     ├─ assets/
-│     ├─ main.cjs
-│     ├─ preload.cjs
-│     ├─ session-store.cjs
-│     ├─ session-store.test.cjs
-│     └─ package.json
-├─ docs/images/hero-dashboard.png
-├─ scripts/run-turbo-dev.cjs
-├─ biome.json
-├─ package.json
-├─ README.md
-├─ README.es.md
-└─ turbo.json
+## Token de GitHub
+
+La app solo solicita un token y obtiene automáticamente la cuenta real mediante `/user`; no hay nombres de cuenta hardcodeados ni un campo manual de usuario.
+
+Con GitHub CLI, selecciona la cuenta adecuada y concede lectura de Projects:
+
+```powershell
+gh.exe auth switch --hostname github.com --user TU_CUENTA
+gh.exe auth refresh --hostname github.com --scopes read:project
+gh.exe auth status --hostname github.com
+gh.exe auth token --hostname github.com --user TU_CUENTA
 ```
 
-## Backend (`apps/api`)
+El token también necesita acceso a los repositorios cuyas issues y Pull Requests quieras consultar. Trátalo como una contraseña y no lo guardes en ningún archivo versionado.
 
-El backend sigue un diseño por capas:
-
-- `dashboard_api/app`
-  - Punto de composición de FastAPI (`create_app`), inyección de dependencias, CORS y ciclo de vida.
-- `dashboard_api/application`
-  - Servicios de caso de uso para snapshots, comandos de estado local y sesión.
-- `dashboard_api/domain`
-  - Modelos de dominio y valores por defecto para incidencias y notas.
-- `dashboard_api/infrastructure`
-  - Cliente REST de GitHub (`httpx`), repositorio SQLite y almacén local cifrado de sesión.
-- `dashboard_api/presentation/http`
-  - Rutas HTTP y esquemas Pydantic de entrada/salida.
-
-Flujo de una carga de snapshot:
-
-1. El frontend solicita `GET /api/issues/snapshot?closed_window=...`.
-2. `IssueDashboardSnapshotService` intenta refrescar contra GitHub si hay credenciales válidas.
-3. `SqliteTrackedIssueRepository` actualiza la proyección remota y fusiona el estado local.
-4. La API devuelve un payload normalizado (`issues` + `meta`) para renderizado.
-
-Si GitHub no está disponible, el servicio cae a caché local en lugar de fallar de forma abrupta.
-
-## Frontend (`apps/web`)
-
-El frontend es una aplicación Next.js orientada a velocidad de triage:
-
-- `src/features/issues-dashboard/dashboard-app.tsx`
-  - Estado principal de orquestación (sesión, carga de snapshot, cola de sincronización, filtros).
-- `src/features/issues-dashboard/dashboard-board.tsx`
-  - Tablero, carriles, interacciones drag/drop y acciones de prioridad.
-- `src/features/issues-dashboard/dashboard-chrome.tsx`
-  - Chrome estilo escritorio, pantalla de sesión y modal de descripción.
-- `src/features/issues-dashboard/api.ts`
-  - Capa cliente HTTP para consumir la API.
-
-Modelo de interacción:
-
-- Lee snapshots del backend.
-- Aplica cambios optimistas en UI.
-- Sincroniza mutaciones mediante endpoints dedicados (`priority`, `pin`, `completion`, `notes`, `sync-state`).
-
-## Escritorio (`apps/desktop`)
-
-Electron cubre responsabilidades nativas sin duplicar lógica de interfaz:
-
-- `main.cjs`
-  - Crea ventana, controla el ciclo de vida del backend embebido, registra eventos y gestiona IPC.
-- `preload.cjs`
-  - Expone un bridge restringido en `window.githubIssuesDesktop`.
-- `session-store.cjs`
-  - Cifra el payload de sesión para ejecución de escritorio.
-
-Flujo de arranque en escritorio:
-
-1. Electron reserva un puerto local para la API.
-2. Crea `BrowserWindow` pasando `--api-base-url`.
-3. Si existe sesión local, arranca el backend embebido y espera `GET /health`.
-4. El frontend consume la API mediante la URL inyectada por preload/main.
-
-## Modos de ejecución
-
-## 1) Modo web (API + Web)
-
-Úsalo para desarrollo en navegador.
-
-- `npm run dev`
-  - Arranca `@dashboard/api` y `@dashboard/web` mediante Turbo.
-  - Resuelve un puerto libre para API e inyecta `NEXT_PUBLIC_API_BASE_URL`.
-
-## 2) Modo escritorio (Web + Electron + API embebida)
-
-Úsalo para validar comportamiento desktop, IPC y empaquetado.
-
-- `npm run dev:desktop`
-  - Arranca `@dashboard/web` y `@dashboard/desktop`.
-  - El backend se ejecuta como proceso local gestionado por Electron.
-
-## Resumen de la API
-
-La base URL se determina en runtime (`http://127.0.0.1:<puerto>` en local).
-
-Rutas de incidencias:
-
-- `GET /api/issues/snapshot`
-- `POST /api/issues/sync-state`
-- `PATCH /api/issues/state`
-- `PATCH /api/issues/priority`
-- `PATCH /api/issues/pin`
-- `PUT /api/issues/completion`
-- `PUT /api/issues/notes`
-
-Rutas de sesión:
-
-- `GET /api/session/status`
-- `POST /api/session`
-- `DELETE /api/session`
-
-Ruta de salud:
-
-- `GET /health`
-
-## Configuración
-
-Variables de entorno más relevantes:
-
-- `DASHBOARD_API_PORT`
-  - Puerto de escucha de la API (por defecto: `8010`; dinámico en orquestación web).
-- `NEXT_PUBLIC_API_BASE_URL`
-  - URL base de API para el frontend (normalmente inyectada por scripts).
-- `GITHUB_TOKEN`
-  - Token opcional de respaldo cuando no hay sesión local guardada. Puede ser un PAT o un token OAuth `gho_` de GitHub CLI.
-- `GITHUB_USERNAME`
-  - Usuario opcional asociado al `GITHUB_TOKEN`.
-- `ISSUES_DATABASE_PATH`
-  - Ruta del archivo SQLite con incidencias.
-- `GITHUB_SESSION_PATH`
-  - Ruta de metadatos de sesión cifrada.
-- `GITHUB_SESSION_KEY_PATH`
-  - Ruta de la clave local de cifrado para sesión de backend.
-
-`apps/api/.env.local` y `apps/web/.env.local` están ignorados por git para configuración local.
-
-## Puesta en marcha
+## Preparación
 
 Requisitos:
 
 - Node.js 22+
 - npm 10+
 - Python 3.13+
-- `uv` (`python -m pip install uv`)
+- `uv` disponible como módulo de Python (`python -m pip install uv`)
 
-Instalación y preparación del entorno backend:
-
-```bash
+```powershell
 npm install
 npm run backend:venv
 npm run backend:sync
 ```
 
-Ejecución en modo web:
+Una vez creado el entorno, los scripts detectan automáticamente `apps/api/.venv/Scripts/python.exe`. Los comandos funcionan igual desde PowerShell, CMD y la terminal integrada de VS Code.
 
-```bash
+## Modos de ejecución
+
+Desarrollo web con FastAPI y Next.js:
+
+```powershell
 npm run dev
 ```
 
-Ejecución en modo escritorio:
+- Interfaz: `http://127.0.0.1:3000`
+- API: el lanzador usa `8010` si está libre o reserva dinámicamente otro puerto local.
 
-```bash
+Desarrollo de escritorio con API gestionada por Electron:
+
+```powershell
 npm run dev:desktop
 ```
 
-## Comandos de calidad
+Paquete de producción:
 
-Ejecución completa de validaciones:
-
-```bash
-npm run verify
-```
-
-Comandos individuales:
-
-```bash
-npm run lint
-npm run test
-npm run build
-```
-
-Comandos solo de backend:
-
-```bash
-npm run backend:dev
-npm run backend:test
-npm run backend:lint
-npm run backend:format
-```
-
-## Empaquetado de escritorio (Windows)
-
-Construcción completa de distribución desktop:
-
-```bash
+```powershell
 npm run build:desktop
 ```
 
-Salida esperada:
+Salida:
 
 ```text
 apps/desktop/release/GitHub Issues Dashboard-win32-x64/GitHub Issues Dashboard.exe
 ```
 
-Para distribuir en GitHub Releases, empaqueta la carpeta:
+El empaquetado recompila siempre la web estática y la API PyInstaller en formato `onedir`, evitando mezclar artefactos antiguos con código nuevo.
 
-```text
-apps/desktop/release/GitHub Issues Dashboard-win32-x64/
+## Comandos de calidad
+
+```powershell
+npm run format:check
+npm run lint
+npm run test
+npm run verify
 ```
 
-## Modelo de seguridad
+`npm run verify` también genera el paquete de escritorio completo.
 
-- Los archivos de entorno local no se versionan.
-- Los tokens de GitHub no se guardan en el repositorio.
-- El almacén de sesión del backend (`apps/api`) cifra tokens con NaCl (`SecretBox`) y clave local por equipo.
-- El registro de sesión desktop usa `tweetnacl`; la clave maestra se envuelve con `safeStorage` de Electron cuando está disponible.
-- Los datos de runtime (sesión y SQLite) se guardan en rutas locales de usuario.
+## Configuración
 
-## Resolución de problemas
+Copia [apps/api/.env.example](apps/api/.env.example) como `apps/api/.env.local` únicamente si necesitas personalizar el modo web. Electron inyecta en cada ejecución su puerto aleatorio, secreto interno, rutas de datos y token cifrado.
 
-- Conflictos de puertos en modo web:
-  - El lanzador de desarrollo reintenta con un puerto libre para API.
-  - El frontend usa por defecto `http://127.0.0.1:3000`.
-- Backend no disponible en escritorio:
-  - Verifica que exista sesión local desde la pantalla de inicio de sesión.
-  - Revisa el log de ejecución (`desktop.log`) en el directorio de datos de usuario.
-- Bloqueos de archivo en empaquetado de Windows:
-  - Cierra cualquier ejecutable empaquetado que esté en ejecución.
-  - Si falla el paso de icono, cierra vistas previas del Explorador y relanza build.
+Variables relevantes:
 
-## Estado del proyecto
+- `DASHBOARD_API_HOST`, `DASHBOARD_API_PORT`: escucha de la API local.
+- `GITHUB_TOKEN`: token opcional solo para desarrollo web.
+- `GITHUB_API_BASE_URL`: URL de GitHub, útil para pruebas o GitHub Enterprise.
+- `GITHUB_REQUEST_TIMEOUT_SECONDS`, `GITHUB_MAX_PAGES`: límites del trabajo remoto.
+- `ISSUES_DATABASE_PATH`: ubicación de SQLite.
+- `DASHBOARD_PREFERENCES_PATH`: ubicación de los ajustes portátiles.
+- `GITHUB_SESSION_PATH`, `GITHUB_SESSION_KEY_PATH`: sesión cifrada del modo web.
+- `DASHBOARD_DESKTOP_MODE`, `DASHBOARD_RUNTIME_SECRET`: protección interna usada por Electron.
+- `NEXT_PUBLIC_API_BASE_URL`: API usada por la web; normalmente la inyecta el lanzador.
 
-Este repositorio se mantiene actualmente como proyecto privado.
+No hay variables de Turso/libSQL ni de despliegue cloud: esta rama está diseñada deliberadamente como aplicación local de escritorio.
+
+## Resumen de la API
+
+- `GET /health`: estado y versiones de API, contrato y esquema.
+- `GET /api/issues/snapshot?compact=true`: snapshot SQLite ligero.
+- `GET /api/issues/{issue_key}`: detalle completo local.
+- `POST /api/synchronization`: refresco unificado de GitHub.
+- `GET /api/synchronization/status`: estado local de sincronización.
+- `GET /api/github/pull-requests`: PRs cacheadas dentro del historial configurado.
+- `GET|PUT /api/preferences`: ajustes portátiles.
+- `POST /api/backups/export|inspect|import`: copias completas y validadas.
+- `/api/issues/*`: cambios locales de prioridad, fijado, cierre y notas.
+- `/api/session/*`: sesión cifrada utilizada únicamente en desarrollo web.
+
+## Persistencia y copias
+
+Electron guarda los datos de cada equipo en su directorio `userData`:
+
+- `issues.db`: issues, campos de Projects, Pull Requests, reviewers y flujo local.
+- `preferences.json`: tema, zoom, ventanas históricas, refresco y panel lateral.
+- `session.json`: token cifrado mediante `safeStorage` y cuenta real resuelta.
+- `window-state.json`: posición y tamaño de ventana específicos del equipo; no se exportan.
+- `desktop.log` y `desktop.log.1`: logs de diagnóstico con tamaño limitado.
+
+El archivo `.issues-dashboard-backup` incluye una instantánea SQLite consistente, preferencias, manifiesto versionado y hashes SHA-256. Antes de sustituir nada, la importación valida tamaños, hashes, esquema, ajustes e integridad SQLite, avisa si cambia la cuenta y crea una copia automática recuperable del estado anterior.
+
+## Seguridad y fiabilidad
+
+- Electron es el único propietario del token en producción; el renderer no lo recibe.
+- La API embebida escucha solo en loopback y exige un secreto aleatorio por ejecución salvo en `/health`.
+- El preload expone un bridge IPC reducido y aislado; la integración de Node está desactivada.
+- Electron verifica el contrato de la API antes de mostrar la aplicación y reinicia el backend un número limitado de veces si se cae.
+- Las consultas usan pooling, historial acotado, ETags para páginas REST, cachés GraphQL cortas y solo los campos que muestra la app.
+- Si GitHub falla, se conserva la última proyección SQLite válida y el aviso aparece como toast.
+
+## Problemas habituales
+
+- Si no aparecen campos de Projects, ejecuta el comando `gh.exe auth refresh ... --scopes read:project` anterior y vuelve a pegar el token.
+- Si PowerShell abre un selector de aplicación al escribir `gh`, utiliza expresamente `gh.exe`.
+- Los fallos del runtime de escritorio quedan en `desktop.log` dentro de `userData`.
+- Cierra el ejecutable empaquetado antes de recompilar si Windows informa de archivos bloqueados.

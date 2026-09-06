@@ -28,8 +28,8 @@ export interface DashboardHeaderProps {
   username: string | null;
   onClearSession: () => void;
   onEditSession: () => void;
-  onExportDatabase: () => void;
-  onImportDatabase: () => void;
+  onExportBackup: () => void;
+  onImportBackup: () => void;
   onOpenSettings: () => void;
   onRefresh: () => void;
   onSectionChange: (section: DashboardSection) => void;
@@ -44,8 +44,8 @@ export function DashboardHeader({
   username,
   onClearSession,
   onEditSession,
-  onExportDatabase,
-  onImportDatabase,
+  onExportBackup,
+  onImportBackup,
   onOpenSettings,
   onRefresh,
   onSectionChange,
@@ -165,10 +165,7 @@ export function DashboardHeader({
                     </div>
                   </Dropdown.Item>
                   {isDesktopClient ? (
-                    <Dropdown.Item
-                      id="export-database"
-                      onPress={onExportDatabase}
-                    >
+                    <Dropdown.Item id="export-backup" onPress={onExportBackup}>
                       <div className="flex items-center gap-2">
                         <Download size={14} />
                         <span>Exportar copia de seguridad</span>
@@ -176,10 +173,7 @@ export function DashboardHeader({
                     </Dropdown.Item>
                   ) : null}
                   {isDesktopClient ? (
-                    <Dropdown.Item
-                      id="import-database"
-                      onPress={onImportDatabase}
-                    >
+                    <Dropdown.Item id="import-backup" onPress={onImportBackup}>
                       <div className="flex items-center gap-2">
                         <Upload size={14} />
                         <span>Importar copia de seguridad</span>
