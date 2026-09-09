@@ -1,11 +1,10 @@
 {
   "name": "@dashboard/web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/run-web-dev.cjs",
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
     "build": "next build",
-    "start": "next start",
     "lint": "biome check .",
     "format": "biome format --write .",
     "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --assist-enabled=false",

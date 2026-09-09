@@ -89,6 +89,11 @@ textarea {
   resize: vertical;
 }
 
+.issue-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 74px;
+}
+
 body[data-issue-drag-active="true"] .issue-card-actions {
   pointer-events: none;
   opacity: 0;

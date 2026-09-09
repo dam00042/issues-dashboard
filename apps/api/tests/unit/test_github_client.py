@@ -7,8 +7,8 @@ from unittest import TestCase
 
 import httpx
 
-from dashboard_api.domain.issues.models import ClosedIssueWindow
-from dashboard_api.infrastructure.github.client import GitHubAssignedIssuesClient
+from dashboard_api.github.client import GitHubAssignedIssuesClient
+from dashboard_api.issues.models import ClosedIssueWindow
 from dashboard_api.settings import AppSettings
 
 HTTP_OK = 200

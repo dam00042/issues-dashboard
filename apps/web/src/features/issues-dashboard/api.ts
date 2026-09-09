@@ -44,7 +44,7 @@ function getApiBaseUrl(): string {
     return window.githubIssuesDesktop.apiBaseUrl;
   }
 
-  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010";
+  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:17632";
 }
 
 function getDesktopBridge() {
@@ -273,102 +273,11 @@ export async function clearLocalSession(): Promise<LocalSessionStatus> {
   return parseResponse<LocalSessionStatus>(response);
 }
 
-function buildIssueReferencePayload(state: SyncStateItem) {
-  return {
-    githubId: state.githubId,
-    issueKey: state.issueKey,
-    issueNumber: state.issueNumber,
-    repoFullName: state.repoFullName,
-    repoName: state.repoName,
-  };
-}
-
-export async function updateIssuePriority(
-  state: SyncStateItem,
-): Promise<number> {
-  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/priority`, {
-    body: JSON.stringify({
-      ...buildIssueReferencePayload(state),
-      priority: state.state.priority,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "PATCH",
-  });
-
-  const payload = await parseResponse<{ updated: number }>(response);
-  return payload.updated;
-}
-
-export async function updateIssuePinState(
-  state: SyncStateItem,
-): Promise<number> {
-  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/pin`, {
-    body: JSON.stringify({
-      ...buildIssueReferencePayload(state),
-      isPinned: state.state.isPinned,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "PATCH",
-  });
-
-  const payload = await parseResponse<{ updated: number }>(response);
-  return payload.updated;
-}
-
-export async function updateIssueCompletionState(
-  state: SyncStateItem,
-): Promise<number> {
-  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/completion`, {
-    body: JSON.stringify({
-      ...buildIssueReferencePayload(state),
-      isCompleted: state.state.localCompletedAt !== null,
-      state: (() => {
-        const { status, ...sanitized } = state.state;
-        return sanitized;
-      })(),
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "PUT",
-  });
-
-  const payload = await parseResponse<{ updated: number }>(response);
-  return payload.updated;
-}
-
-export async function updateIssueNotes(state: SyncStateItem): Promise<number> {
-  const response = await apiFetch(`${getApiBaseUrl()}/api/issues/notes`, {
-    body: JSON.stringify({
-      ...buildIssueReferencePayload(state),
-      lastInteractedAt: state.state.lastInteractedAt,
-      noteBlocks: state.state.noteBlocks,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "PUT",
-  });
-
-  const payload = await parseResponse<{ updated: number }>(response);
-  return payload.updated;
-}
-
 export async function syncIssueStates(
   states: SyncStateItem[],
 ): Promise<number> {
-  // Strip the frontend-only 'status' field to satisfy FastAPI's extra="forbid"
-  const sanitizedStates = states.map((item) => {
-    const { status, ...sanitizedState } = item.state;
-    return { ...item, state: sanitizedState };
-  });
-
   const response = await apiFetch(`${getApiBaseUrl()}/api/issues/sync-state`, {
-    body: JSON.stringify({ states: sanitizedStates }),
+    body: JSON.stringify({ states }),
     headers: {
       "Content-Type": "application/json",
     },

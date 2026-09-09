@@ -19,46 +19,16 @@ import type {
   LocalSessionStatus,
   PriorityValue,
   SnapshotResponse,
-  SyncStateItem,
 } from "@/features/issues-dashboard/types";
+import { buildSyncPayload } from "@/features/issues-dashboard/utils/dashboard-helpers";
 import {
-  buildSyncPayload,
-  normalizeNoteBlocks,
-} from "@/features/issues-dashboard/utils/dashboard-helpers";
+  flushMissingIssueStates,
+  getStableIssueKeys,
+  reconcileIssue,
+} from "@/features/issues-dashboard/utils/issue-state";
 
 export interface SessionFormState {
   token: string;
-}
-
-function normalizeIssue(issue: DashboardIssue): DashboardIssue {
-  const status =
-    issue.localState?.status ??
-    (issue.localState?.localCompletedAt ? "completed" : "active");
-
-  return {
-    ...issue,
-    localState: {
-      ...issue.localState,
-      status,
-      noteBlocks: normalizeNoteBlocks(issue.localState?.noteBlocks),
-    },
-  };
-}
-
-function getLatestStableKeys(
-  payload: SyncStateItem[],
-  issues: DashboardIssue[],
-): string[] {
-  const interactedAtByIssue = new Map(
-    issues.map((issue) => [issue.issueKey, issue.localState.lastInteractedAt]),
-  );
-
-  return payload.flatMap((item) => {
-    return interactedAtByIssue.get(item.issueKey) ===
-      item.state.lastInteractedAt
-      ? [item.issueKey]
-      : [];
-  });
 }
 
 export function useIssueSync(closedWindow: ClosedWindowOption) {
@@ -81,24 +51,41 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
   const [syncError, setSyncError] = useState("");
 
   const issuesRef = useRef<DashboardIssue[]>([]);
-  const dirtyIssueKeysRef = useRef<Set<string>>(new Set());
+  const dirtyIssueVersionsRef = useRef(new Map<string, number>());
+  const dirtyNoteKeysRef = useRef(new Set<string>());
+  const editVersionRef = useRef(0);
+  const snapshotRequestIdRef = useRef(0);
+  const localStateGenerationRef = useRef(0);
+  const restoredSnapshotPendingRef = useRef(false);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeSyncRef = useRef<Promise<void> | null>(null);
   const flushDirtyIssueStatesRef = useRef<() => Promise<void>>(async () => {});
   const detailRequestsRef = useRef(new Map<string, Promise<void>>());
 
-  useEffect(() => {
-    issuesRef.current = issues;
-  }, [issues]);
-
-  const markDirtyKey = useCallback((issueKey: string) => {
-    dirtyIssueKeysRef.current.add(issueKey);
+  const replaceIssues = useCallback((nextIssues: DashboardIssue[]) => {
+    issuesRef.current = nextIssues;
+    setIssues(nextIssues);
   }, []);
 
   const clearDirtyKeys = useCallback((keysToClear: string[]) => {
     for (const key of keysToClear) {
-      dirtyIssueKeysRef.current.delete(key);
+      dirtyIssueVersionsRef.current.delete(key);
+      dirtyNoteKeysRef.current.delete(key);
     }
+  }, []);
+
+  const resetPendingState = useCallback(() => {
+    localStateGenerationRef.current += 1;
+    snapshotRequestIdRef.current += 1;
+    dirtyIssueVersionsRef.current.clear();
+    dirtyNoteKeysRef.current.clear();
+    detailRequestsRef.current.clear();
+    activeSyncRef.current = null;
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+    }
+    setSyncError("");
   }, []);
 
   const scheduleDirtyIssueSync = useCallback((delay = 600) => {
@@ -107,7 +94,9 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
     }
     syncTimeoutRef.current = setTimeout(() => {
       syncTimeoutRef.current = null;
-      void flushDirtyIssueStatesRef.current();
+      void flushDirtyIssueStatesRef.current().catch(() => {
+        // The flush records the error and keeps pending edits for retry.
+      });
     }, delay);
   }, []);
 
@@ -115,40 +104,49 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
     (
       issueKey: string,
       updater: (previousState: IssueLocalState) => IssueLocalState,
+      { notesChanged = false } = {},
     ) => {
       const interactedAt = new Date().toISOString();
+      let changed = false;
+      const nextIssues = issuesRef.current.map((issue) => {
+        if (issue.issueKey !== issueKey) {
+          return issue;
+        }
+        const updatedState = updater(issue.localState);
+        if (updatedState === issue.localState) return issue;
+        changed = true;
+        const nextLocalState = {
+          ...updatedState,
+          lastInteractedAt: interactedAt,
+        };
 
-      setIssues((previousIssues) => {
-        const nextIssues = previousIssues.map((issue) => {
-          if (issue.issueKey !== issueKey) {
-            return issue;
-          }
-
-          const nextLocalState = {
-            ...updater(issue.localState),
-            lastInteractedAt: interactedAt,
-          };
-
-          return {
-            ...issue,
-            localState: nextLocalState,
-          };
-        });
-        issuesRef.current = nextIssues;
-        return nextIssues;
+        return {
+          ...issue,
+          notesLoaded:
+            notesChanged || (issue.notesLoaded ?? issue.detailsLoaded),
+          localState: nextLocalState,
+        };
       });
-
-      markDirtyKey(issueKey);
+      if (!changed) return;
+      editVersionRef.current += 1;
+      dirtyIssueVersionsRef.current.set(issueKey, editVersionRef.current);
+      if (notesChanged) dirtyNoteKeysRef.current.add(issueKey);
+      replaceIssues(nextIssues);
       scheduleDirtyIssueSync();
     },
-    [markDirtyKey, scheduleDirtyIssueSync],
+    [replaceIssues, scheduleDirtyIssueSync],
   );
 
   const fetchSnapshotData = useCallback(
     async (
       windowOption: ClosedWindowOption,
-      options: { silent?: boolean } = {},
+      options: { silent?: boolean; replaceLocalState?: boolean } = {},
     ) => {
+      if (options.replaceLocalState) {
+        resetPendingState();
+        restoredSnapshotPendingRef.current = true;
+      }
+      const requestId = ++snapshotRequestIdRef.current;
       if (!options.silent) {
         setIsFetchingSnapshot(true);
       }
@@ -156,22 +154,29 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
 
       try {
         const nextSnapshot = await getIssuesSnapshot(windowOption);
+        if (requestId !== snapshotRequestIdRef.current) return;
+        await flushMissingIssueStates(
+          nextSnapshot.issues,
+          dirtyIssueVersionsRef.current,
+          flushDirtyIssueStatesRef.current,
+        );
+        if (requestId !== snapshotRequestIdRef.current) return;
         setSnapshot(nextSnapshot);
-        setIssues((currentIssues) => {
-          const currentIssuesByKey = new Map(
-            currentIssues.map((issue) => [issue.issueKey, issue]),
-          );
-          const nextIssues = nextSnapshot.issues.map((issue) => {
-            const normalizedIssue = normalizeIssue(issue);
-            const currentIssue = currentIssuesByKey.get(issue.issueKey);
-            return currentIssue && dirtyIssueKeysRef.current.has(issue.issueKey)
-              ? { ...normalizedIssue, localState: currentIssue.localState }
-              : normalizedIssue;
+        const currentIssuesByKey = new Map(
+          issuesRef.current.map((issue) => [issue.issueKey, issue]),
+        );
+        const nextIssues = nextSnapshot.issues.map((issue) => {
+          const currentIssue = currentIssuesByKey.get(issue.issueKey);
+          return reconcileIssue(issue, currentIssue, {
+            dirty: dirtyIssueVersionsRef.current.has(issue.issueKey),
+            dirtyNotes: dirtyNoteKeysRef.current.has(issue.issueKey),
+            replaceLocalState: restoredSnapshotPendingRef.current,
           });
-          issuesRef.current = nextIssues;
-          return nextIssues;
         });
+        restoredSnapshotPendingRef.current = false;
+        replaceIssues(nextIssues);
       } catch (error) {
+        if (requestId !== snapshotRequestIdRef.current) return;
         if (isAuthenticationApiError(error)) {
           setSessionStatus((previousStatus) => ({
             configured: false,
@@ -197,116 +202,120 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
             : "No se pudieron cargar los datos de las issues.",
         );
       } finally {
-        if (!options.silent) {
+        if (requestId === snapshotRequestIdRef.current) {
           setIsFetchingSnapshot(false);
         }
       }
     },
-    [],
+    [replaceIssues, resetPendingState],
   );
 
-  const loadIssueDetail = useCallback((issueKey: string) => {
-    const currentIssue = issuesRef.current.find(
-      (issue) => issue.issueKey === issueKey,
-    );
-    if (!currentIssue || currentIssue.detailsLoaded) return Promise.resolve();
+  const loadIssueDetail = useCallback(
+    (issueKey: string) => {
+      const currentIssue = issuesRef.current.find(
+        (issue) => issue.issueKey === issueKey,
+      );
+      if (!currentIssue || currentIssue.detailsLoaded) return Promise.resolve();
 
-    const pendingRequest = detailRequestsRef.current.get(issueKey);
-    if (pendingRequest) return pendingRequest;
+      const pendingRequest = detailRequestsRef.current.get(issueKey);
+      if (pendingRequest) return pendingRequest;
+      const stateGeneration = localStateGenerationRef.current;
 
-    const request = (async () => {
-      try {
-        const detail = normalizeIssue(await getIssueDetail(issueKey));
-        setIssues((currentIssues) => {
-          const nextIssues = currentIssues.map((issue) => {
+      const request = (async () => {
+        try {
+          const detail = await getIssueDetail(issueKey);
+          if (stateGeneration !== localStateGenerationRef.current) return;
+          const nextIssues = issuesRef.current.map((issue) => {
             if (issue.issueKey !== issueKey) return issue;
-            return {
-              ...detail,
-              localState: dirtyIssueKeysRef.current.has(issueKey)
-                ? issue.localState
-                : detail.localState,
-            };
+            return reconcileIssue(detail, issue, {
+              dirty: dirtyIssueVersionsRef.current.has(issueKey),
+              dirtyNotes: dirtyNoteKeysRef.current.has(issueKey),
+            });
           });
-          issuesRef.current = nextIssues;
-          return nextIssues;
-        });
-      } catch (error) {
-        setSnapshotError(
-          error instanceof Error
-            ? error.message
-            : "No se pudo cargar el detalle local de la issue.",
-        );
-      } finally {
-        detailRequestsRef.current.delete(issueKey);
-      }
-    })();
-    detailRequestsRef.current.set(issueKey, request);
-    return request;
-  }, []);
+          replaceIssues(nextIssues);
+        } catch (error) {
+          if (stateGeneration !== localStateGenerationRef.current) return;
+          setSnapshotError(
+            error instanceof Error
+              ? error.message
+              : "No se pudo cargar el detalle local de la issue.",
+          );
+        } finally {
+          if (stateGeneration === localStateGenerationRef.current) {
+            detailRequestsRef.current.delete(issueKey);
+          }
+        }
+      })();
+      detailRequestsRef.current.set(issueKey, request);
+      return request;
+    },
+    [replaceIssues],
+  );
 
   const flushDirtyIssueStates = useCallback(async () => {
     if (activeSyncRef.current) {
-      await activeSyncRef.current;
-      if (dirtyIssueKeysRef.current.size > 0) {
-        scheduleDirtyIssueSync();
-      }
-      return;
+      return activeSyncRef.current;
     }
-
-    const payload = buildSyncPayload(
-      issuesRef.current,
-      dirtyIssueKeysRef.current,
-    );
-
-    if (payload.length === 0) {
-      return;
-    }
+    if (dirtyIssueVersionsRef.current.size === 0) return;
 
     setSyncError("");
+    const stateGeneration = localStateGenerationRef.current;
 
-    const syncPromise = (async () => {
-      let synchronized = false;
+    const syncPromise = Promise.resolve().then(async () => {
       try {
-        await syncIssueStates(payload);
-        synchronized = true;
-        const stableKeys = getLatestStableKeys(payload, issuesRef.current);
-        clearDirtyKeys(stableKeys);
-      } catch (error) {
-        if (isConnectivityApiError(error)) {
-          setSyncError(
-            "Hay cambios pendientes de guardar. Se reintentará al recuperar la conexión.",
+        if (stateGeneration !== localStateGenerationRef.current) return;
+        while (dirtyIssueVersionsRef.current.size > 0) {
+          const submittedVersions = new Map(dirtyIssueVersionsRef.current);
+          const payload = buildSyncPayload(
+            issuesRef.current,
+            submittedVersions.keys(),
+            dirtyNoteKeysRef.current,
           );
-          return;
+          if (payload.length === 0) break;
+          await syncIssueStates(payload);
+          if (stateGeneration !== localStateGenerationRef.current) return;
+          clearDirtyKeys(
+            getStableIssueKeys(
+              submittedVersions,
+              dirtyIssueVersionsRef.current,
+            ),
+          );
         }
-
+      } catch (error) {
+        if (stateGeneration !== localStateGenerationRef.current) return;
         setSyncError(
-          error instanceof Error
-            ? error.message
-            : "No se pudieron guardar los cambios locales.",
+          isConnectivityApiError(error)
+            ? "Hay cambios pendientes de guardar. Se reintentará al recuperar la conexión."
+            : error instanceof Error
+              ? error.message
+              : "No se pudieron guardar los cambios locales.",
         );
+        throw error;
       } finally {
-        activeSyncRef.current = null;
-        if (synchronized && dirtyIssueKeysRef.current.size > 0) {
-          scheduleDirtyIssueSync();
+        if (stateGeneration === localStateGenerationRef.current) {
+          activeSyncRef.current = null;
         }
       }
-    })();
+    });
 
     activeSyncRef.current = syncPromise;
     return syncPromise;
-  }, [clearDirtyKeys, scheduleDirtyIssueSync]);
+  }, [clearDirtyKeys]);
 
   useEffect(() => {
     flushDirtyIssueStatesRef.current = flushDirtyIssueStates;
   }, [flushDirtyIssueStates]);
 
   useEffect(() => {
+    const retryPendingChanges = () => scheduleDirtyIssueSync(0);
+    window.addEventListener("online", retryPendingChanges);
     return () => {
+      window.removeEventListener("online", retryPendingChanges);
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, []);
+  }, [scheduleDirtyIssueSync]);
 
   useEffect(() => {
     let cancelled = false;
@@ -377,15 +386,12 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
   const handleClearSession = async () => {
     try {
       const nextStatus = await clearLocalSession();
-      dirtyIssueKeysRef.current.clear();
-      detailRequestsRef.current.clear();
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-        syncTimeoutRef.current = null;
-      }
+      resetPendingState();
+      restoredSnapshotPendingRef.current = false;
       setSessionStatus(nextStatus);
       setSnapshot(null);
-      setIssues([]);
+      replaceIssues([]);
+      setIsFetchingSnapshot(false);
       setIsEditingSession(false);
       setSessionForm({ token: "" });
     } catch (error) {
@@ -471,10 +477,11 @@ export function useIssueSync(closedWindow: ClosedWindowOption) {
       issueKey: string,
       nextBlocks: DashboardIssue["localState"]["noteBlocks"],
     ) => {
-      updateIssueState(issueKey, (previous) => ({
-        ...previous,
-        noteBlocks: nextBlocks,
-      }));
+      updateIssueState(
+        issueKey,
+        (previous) => ({ ...previous, noteBlocks: nextBlocks }),
+        { notesChanged: true },
+      );
     },
     [updateIssueState],
   );

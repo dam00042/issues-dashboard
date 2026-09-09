@@ -431,6 +431,7 @@ export function issueMatchesProjectFilters(
 export function buildSyncPayload(
   issues: DashboardIssue[],
   dirtyIssueKeys: Iterable<string>,
+  dirtyNoteKeys: ReadonlySet<string> = new Set(),
 ): SyncStateItem[] {
   const dirtyKeySet = new Set(dirtyIssueKeys);
 
@@ -442,8 +443,18 @@ export function buildSyncPayload(
       issueNumber: issue.number,
       repoFullName: issue.repository.fullName,
       repoName: issue.repository.name,
-      state: issue.localState,
+      state:
+        issue.detailsLoaded || dirtyNoteKeys.has(issue.issueKey)
+          ? issue.localState
+          : omitUnloadedNotes(issue.localState),
     }));
+}
+
+function omitUnloadedNotes({
+  noteBlocks: _noteBlocks,
+  ...state
+}: DashboardIssue["localState"]) {
+  return state;
 }
 
 export function formatAbsoluteTimestamp(timestamp: string | null): string {

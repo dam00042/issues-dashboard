@@ -361,42 +361,20 @@ function resolveDesktopBackgroundColor(theme) {
     : DEFAULT_BACKGROUND_LIGHT;
 }
 
-function getDevelopmentBackendCommand() {
+function getDevelopmentBackendCommand(environment) {
   const apiDirectory = path.resolve(runtimeDirectory, "..", "api");
-  const pythonExecutable =
-    process.platform === "win32"
-      ? path.join(apiDirectory, ".venv", "Scripts", "python.exe")
-      : path.join(apiDirectory, ".venv", "bin", "python");
-
-  if (fs.existsSync(pythonExecutable)) {
-    return {
-      args: ["-m", "dashboard_api"],
-      command: pythonExecutable,
-      cwd: apiDirectory,
-    };
-  }
-
-  return {
-    args: [
-      "-m",
-      "uv",
-      "run",
-      "--project",
-      apiDirectory,
-      "python",
-      "-m",
-      "dashboard_api",
-    ],
-    command: "python",
-    cwd: apiDirectory,
-  };
+  const { getPythonLaunch } = require(
+    path.join(apiDirectory, "scripts", "python-runtime.cjs"),
+  );
+  return getPythonLaunch(["-m", "dashboard_api"], { env: environment });
 }
 
-function getPackagedBackendCommand() {
+function getPackagedBackendCommand(environment) {
+  const backendDirectory = path.join(runtimeDirectory, "backend");
   return {
     args: [],
-    command: path.join(runtimeDirectory, "backend", "dashboard-api.exe"),
-    cwd: path.join(runtimeDirectory, "backend"),
+    command: path.join(backendDirectory, "dashboard-api.exe"),
+    options: { cwd: backendDirectory, env: environment },
   };
 }
 
@@ -578,12 +556,12 @@ async function launchBackendProcess(forceRestart) {
   backendReady = false;
   backendStopRequested = false;
   const githubToken = getStoredGitHubToken();
+  const environment = buildBackendEnvironment(githubToken);
   const backendCommand = app.isPackaged
-    ? getPackagedBackendCommand()
-    : getDevelopmentBackendCommand();
+    ? getPackagedBackendCommand(environment)
+    : getDevelopmentBackendCommand(environment);
   const childProcess = spawn(backendCommand.command, backendCommand.args, {
-    cwd: backendCommand.cwd,
-    env: buildBackendEnvironment(githubToken),
+    ...backendCommand.options,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });

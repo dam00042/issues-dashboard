@@ -1,134 +1,157 @@
+const fs = require("node:fs");
 const net = require("node:net");
-const { spawn } = require("node:child_process");
 const path = require("node:path");
+const { parseEnv } = require("node:util");
+const { runSupervised } = require("./run-supervised.cjs");
 
-const DEFAULT_API_PORT = 8010;
-const DEFAULT_FRONTEND_URL = "http://127.0.0.1:3000";
-const mode = process.argv[2] ?? "web";
-const supportedModes = new Set(["desktop", "web"]);
+const DEFAULT_API_PORT = 17632;
+const HOST = "127.0.0.1";
+const FRONTEND_PORT = 3000;
+const repositoryRoot = path.resolve(__dirname, "..");
 
-function parseUiOverride() {
-  for (const argument of process.argv.slice(3)) {
-    if (argument.startsWith("--ui=")) {
-      return argument.slice("--ui=".length);
+function readLocalEnvironment(workspace) {
+  const environmentPath = path.join(
+    repositoryRoot,
+    "apps",
+    workspace,
+    ".env.local",
+  );
+  try {
+    return parseEnv(fs.readFileSync(environmentPath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return {};
     }
+    throw error;
+  }
+}
+
+function parseApiPort(rawPort) {
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      "The development API port must be an integer between 1 and 65535.",
+    );
+  }
+  if (port === FRONTEND_PORT) {
+    throw new Error("The API and frontend cannot share port 3000.");
+  }
+  return port;
+}
+
+function resolveApiPort(environment, apiEnvironment, webEnvironment) {
+  // Local configuration wins over stale variables inherited by the terminal.
+  const configuredUrl = webEnvironment.NEXT_PUBLIC_API_BASE_URL;
+  if (configuredUrl) {
+    const url = new URL(configuredUrl);
+    if (
+      url.protocol !== "http:" ||
+      ![HOST, "localhost"].includes(url.hostname) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error("NEXT_PUBLIC_API_BASE_URL must be a local HTTP origin.");
+    }
+    return parseApiPort(url.port || "80");
   }
 
-  return process.stdout.isTTY ? "tui" : "stream";
+  return parseApiPort(
+    apiEnvironment.DASHBOARD_API_PORT ??
+      environment.DASHBOARD_API_PORT ??
+      DEFAULT_API_PORT,
+  );
 }
 
-function getTurboLaunch() {
-  return {
-    args: [path.join(__dirname, "..", "node_modules", "turbo", "bin", "turbo")],
-    command: process.execPath,
-  };
-}
-
-function reservePort(preferredPort) {
+function assertPortAvailable(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(preferredPort, "127.0.0.1", () => {
-      const address = server.address();
-
-      if (!address || typeof address === "string") {
-        reject(new Error("Unable to resolve the local API port."));
-        return;
-      }
-
-      server.close((closeError) => {
-        if (closeError) {
-          reject(closeError);
-          return;
-        }
-
-        resolve(address.port);
-      });
+    server.once("error", (error) => {
+      reject(
+        new Error(
+          `Cannot start development at http://${HOST}:${port}: ${error.code}. Close the existing listener and try again.`,
+          { cause: error },
+        ),
+      );
+    });
+    server.listen(port, HOST, () => {
+      server.close((error) => (error ? reject(error) : resolve()));
     });
   });
 }
 
-async function resolveApiPort() {
-  const rawPort = process.env.DASHBOARD_API_PORT;
-  const parsedPort = Number.parseInt(rawPort ?? String(DEFAULT_API_PORT), 10);
-  const preferredPort = Number.isNaN(parsedPort) ? DEFAULT_API_PORT : parsedPort;
-
-  try {
-    return await reservePort(preferredPort);
-  } catch {
-    return reservePort(0);
-  }
-}
-
 async function main() {
-  if (!supportedModes.has(mode)) {
-    console.error(
-      `Unsupported dev mode "${mode}". Use "web" or "desktop" instead.`,
-    );
-    process.exitCode = 1;
-    return;
+  const mode = process.argv[2] ?? "web";
+  if (!["desktop", "web"].includes(mode)) {
+    throw new Error(`Unsupported dev mode "${mode}". Use "web" or "desktop".`);
   }
 
-  const ui = parseUiOverride();
-  const filters =
-    mode === "desktop"
-      ? [
-          "--filter=@dashboard/web",
-          "--filter=@dashboard/desktop",
-        ]
-      : [
-          "--filter=@dashboard/api",
-          "--filter=@dashboard/web",
-        ];
-  const apiPort = mode === "web" ? await resolveApiPort() : null;
-  const childEnvironment = { ...process.env };
+  const uiArgument = process.argv
+    .slice(3)
+    .find((argument) => argument.startsWith("--ui="));
+  const ui =
+    uiArgument?.slice("--ui=".length) ??
+    (process.stdout.isTTY ? "tui" : "stream");
+  if (!["tui", "stream"].includes(ui)) {
+    throw new Error(`Unsupported Turbo UI "${ui}". Use "tui" or "stream".`);
+  }
 
+  const childEnvironment = {
+    ...process.env,
+    HOSTNAME: HOST,
+    PORT: String(FRONTEND_PORT),
+  };
+  const apiPort =
+    mode === "web"
+      ? resolveApiPort(
+          process.env,
+          readLocalEnvironment("api"),
+          readLocalEnvironment("web"),
+        )
+      : null;
+
+  await Promise.all([
+    assertPortAvailable(FRONTEND_PORT),
+    ...(apiPort === null ? [] : [assertPortAvailable(apiPort)]),
+  ]);
+
+  console.log(`[dev] Frontend: http://${HOST}:${FRONTEND_PORT}`);
   if (apiPort !== null) {
-    const apiBaseUrl = `http://127.0.0.1:${String(apiPort)}`;
-
-    childEnvironment.DASHBOARD_API_PORT = String(apiPort);
-    childEnvironment.HOSTNAME = "127.0.0.1";
-    childEnvironment.NEXT_PUBLIC_API_BASE_URL = apiBaseUrl;
-    childEnvironment.PORT = "3000";
-
-    console.log(`[dev] Frontend: ${DEFAULT_FRONTEND_URL}`);
+    const apiBaseUrl = `http://${HOST}:${apiPort}`;
+    Object.assign(childEnvironment, {
+      DASHBOARD_API_HOST: HOST,
+      DASHBOARD_API_PORT: String(apiPort),
+      NEXT_PUBLIC_API_BASE_URL: apiBaseUrl,
+    });
     console.log(`[dev] Backend: ${apiBaseUrl}`);
   } else {
-    childEnvironment.HOSTNAME = "127.0.0.1";
-    childEnvironment.PORT = "3000";
-    console.log(`[dev] Frontend: ${DEFAULT_FRONTEND_URL}`);
     console.log("[dev] Backend: embebido en Electron");
   }
+  console.log(`[dev] Turbo UI: ${ui}`);
 
-  if (ui === "tui") {
-    console.log(
-      "[dev] Turbo TUI activo. Usa las flechas del teclado para cambiar de tarea.",
-    );
-  } else {
-    console.log(`[dev] Turbo UI: ${ui}`);
-  }
-
-  const turboLaunch = getTurboLaunch();
-  const childProcess = spawn(
-    turboLaunch.command,
-    [...turboLaunch.args, "run", "dev", `--ui=${ui}`, ...filters],
-    {
-      env: childEnvironment,
-      shell: false,
-      stdio: "inherit",
-    },
+  runSupervised(
+    process.execPath,
+    [
+      path.join(repositoryRoot, "node_modules", "turbo", "bin", "turbo"),
+      "run",
+      "dev",
+      `--ui=${ui}`,
+      "--filter=@dashboard/web",
+      mode === "web"
+        ? "--filter=@dashboard/api"
+        : "--filter=@dashboard/desktop",
+    ],
+    { cwd: repositoryRoot, env: childEnvironment },
   );
+}
 
-  childProcess.on("exit", (code, signal) => {
-    if (signal) {
-      process.kill(process.pid, signal);
-      return;
-    }
-
-    process.exit(code ?? 0);
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[dev] ${error.message}`);
+    process.exitCode = 1;
   });
 }
 
-void main();
-
+module.exports = { assertPortAvailable, parseApiPort, resolveApiPort };

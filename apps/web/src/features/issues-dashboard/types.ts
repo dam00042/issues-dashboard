@@ -45,7 +45,7 @@ export interface IssueLocalState {
   localCompletedAt: string | null;
   noteBlocks: NoteBlock[];
   priority: PriorityValue | null;
-  status?: LocalIssueStatus;
+  status: LocalIssueStatus;
 }
 
 export interface RepositorySummary {
@@ -72,11 +72,7 @@ export interface GitHubProjectItem {
 }
 
 export type PullRequestState = "open" | "closed" | "merged";
-export type PullRequestStateFilter =
-  | PullRequestState
-  | "all"
-  | "draft"
-  | "custom";
+export type PullRequestStateFilter = PullRequestState | "all" | "draft";
 export type PullRequestWindowOption = `${number}${ClosedWindowUnit}`;
 export type PullRequestViewerRole =
   | "authored"
@@ -122,6 +118,7 @@ export interface DashboardIssue {
   closedAt: string | null;
   createdAt: string | null;
   detailsLoaded: boolean;
+  notesLoaded?: boolean;
   firstSeenAt: string;
   githubId: number;
   htmlUrl: string;
@@ -208,7 +205,7 @@ export interface SyncStateItem {
   issueNumber: number;
   repoFullName: string;
   repoName: string;
-  state: IssueLocalState;
+  state: Omit<IssueLocalState, "noteBlocks"> & { noteBlocks?: NoteBlock[] };
 }
 
 export interface PriorityDefinition {

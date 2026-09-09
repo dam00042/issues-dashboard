@@ -11,7 +11,7 @@ npm run test --workspace @dashboard/web
 npm run build --workspace @dashboard/web
 ```
 
-Running `npm run dev` from the repository root is preferred because it starts the local API and injects the selected API port.
+Running `npm run dev` from the repository root starts the frontend at `http://127.0.0.1:3000` together with the API at `http://127.0.0.1:17632`. The launcher reads local port overrides before inherited terminal variables and injects the same API endpoint into both workspaces. Next.js owns its development lock and reports occupied ports without replacing a running instance.
 
 ## Runtime rules
 

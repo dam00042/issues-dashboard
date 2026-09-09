@@ -10,18 +10,18 @@ from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
-from dashboard_api.app.main import create_app
-from dashboard_api.application.issues.service import (
-    AssignedIssuesFetchResult,
-    PullRequestFetchResult,
-)
-from dashboard_api.domain.issues.models import (
+from dashboard_api.app import create_app
+from dashboard_api.issues.models import (
     ClosedIssueWindow,
     GitHubPullRequest,
     PullRequestWindow,
 )
+from dashboard_api.issues.service import (
+    AssignedIssuesFetchResult,
+    PullRequestFetchResult,
+)
 from dashboard_api.settings import AppSettings
-from dashboard_api.shared.time import utc_now_iso
+from dashboard_api.time_utils import utc_now_iso
 
 HTTP_OK = 200
 HTTP_UNPROCESSABLE_ENTITY = 422

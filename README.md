@@ -50,18 +50,17 @@ The token also needs access to the repositories whose issues and Pull Requests s
 
 Requirements:
 
-- Node.js 22+
+- Node.js 22.12+
 - npm 10+
 - Python 3.13+
 - `uv` available as a Python module (`python -m pip install uv`)
 
 ```powershell
 npm install
-npm run backend:venv
 npm run backend:sync
 ```
 
-The repository scripts automatically use `apps/api/.venv/Scripts/python.exe` once it exists, so the regular commands work consistently from PowerShell, CMD, and VS Code.
+The repository scripts run Python commands through `uv run --frozen`, using `apps/api/uv.lock` and the single environment at `apps/api/.venv`. No environment activation is needed. `backend:sync` creates the environment when needed. Set `DASHBOARD_BOOTSTRAP_PYTHON` only when the Python interpreter providing the `uv` module is outside your PATH.
 
 ## Run modes
 
@@ -72,7 +71,9 @@ npm run dev
 ```
 
 - UI: `http://127.0.0.1:3000`
-- API: the launcher selects port `8010` when available and otherwise chooses a free local port.
+- API: `http://127.0.0.1:17632`
+
+The API port in `apps/web/.env.local` (`NEXT_PUBLIC_API_BASE_URL`) takes precedence, followed by `apps/api/.env.local` (`DASHBOARD_API_PORT`), the inherited `DASHBOARD_API_PORT`, and the default above. The launcher injects the same resolved endpoint into both workspaces. An occupied port produces an explicit error before either workspace starts; it does not silently change endpoints or stop another running instance. Ctrl+C closes the child processes, with a bounded process-tree cleanup on Windows.
 
 Desktop development (Next.js + Electron-managed FastAPI):
 
@@ -83,7 +84,7 @@ npm run dev:desktop
 Production desktop package:
 
 ```powershell
-npm run build:desktop
+npm run build
 ```
 
 Output:
@@ -99,11 +100,12 @@ The package always rebuilds the static web UI and the PyInstaller `onedir` API b
 ```powershell
 npm run format:check
 npm run lint
+npm run typecheck
 npm run test
 npm run verify
 ```
 
-`npm run verify` also produces the complete desktop package.
+`npm run verify` checks formatting, lint, types, and tests without producing a desktop package. Packaging is an explicit `npm run build` step.
 
 ## Configuration
 

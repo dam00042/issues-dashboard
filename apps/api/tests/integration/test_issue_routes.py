@@ -10,21 +10,21 @@ from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
-from dashboard_api.app.main import create_app
-from dashboard_api.application.issues.service import (
-    AssignedIssuesFetchResult,
-    PullRequestFetchResult,
-)
-from dashboard_api.domain.issues.defaults import build_issue_key
-from dashboard_api.domain.issues.models import (
+from dashboard_api.app import create_app
+from dashboard_api.issues.defaults import build_issue_key
+from dashboard_api.issues.models import (
     ClosedIssueWindow,
     GitHubAssignedIssue,
     GitHubProjectFieldValue,
     GitHubProjectItem,
     PullRequestWindow,
 )
+from dashboard_api.issues.service import (
+    AssignedIssuesFetchResult,
+    PullRequestFetchResult,
+)
 from dashboard_api.settings import AppSettings
-from dashboard_api.shared.time import subtract_months, utc_now
+from dashboard_api.time_utils import subtract_months, utc_now
 
 HTTP_OK = 200
 HTTP_UNPROCESSABLE_ENTITY = 422
@@ -214,6 +214,118 @@ class IssueRoutesIntegrationTests(TestCase):
         if build_issue_key("octo/old", 303) in returned_issue_keys:
             message = "Did not expect the old closed issue in the snapshot."
             raise AssertionError(message)
+
+    def test_local_workflow_survives_github_refresh_and_compact_reads(self) -> None:
+        """Keep review/completion state in SQLite independently of remote state."""
+        issue_key = build_issue_key("octo/open", OPEN_ISSUE_NUMBER)
+        for local_status in ("in_review", "completed", "active"):
+            with self.subTest(local_status=local_status):
+                state = {
+                    "status": local_status,
+                    "localCompletedAt": (
+                        _relative_timestamp(0) if local_status == "completed" else None
+                    ),
+                }
+                response = self.client.post(
+                    "/api/issues/sync-state",
+                    json={
+                        "states": [
+                            {
+                                "issueKey": issue_key,
+                                "githubId": 1,
+                                "repoFullName": "octo/open",
+                                "repoName": "open",
+                                "issueNumber": OPEN_ISSUE_NUMBER,
+                                "state": state,
+                            },
+                        ],
+                    },
+                )
+                if response.status_code != HTTP_OK:
+                    raise AssertionError(response.text)
+                refreshed = self.client.post(
+                    "/api/synchronization",
+                    json={"closedWindow": "all", "pullRequestWindow": "1m"},
+                )
+                if refreshed.status_code != HTTP_OK:
+                    raise AssertionError(refreshed.text)
+                snapshot = self.client.get(
+                    "/api/issues/snapshot",
+                    params={"compact": True},
+                ).json()
+                persisted = next(
+                    issue
+                    for issue in snapshot["issues"]
+                    if issue["issueKey"] == issue_key
+                )
+                detail = self.client.get(
+                    f"/api/issues/{quote(issue_key, safe='')}",
+                ).json()
+                if persisted["localState"]["status"] != local_status:
+                    raise AssertionError(persisted)
+                if detail["localState"]["status"] != local_status:
+                    raise AssertionError(detail)
+
+    def test_state_updates_without_notes_preserve_saved_note_blocks(self) -> None:
+        """Allow compact cards to change workflow without erasing unloaded notes."""
+        issue_key = build_issue_key("octo/open", OPEN_ISSUE_NUMBER)
+        reference = {
+            "issueKey": issue_key,
+            "githubId": 1,
+            "repoFullName": "octo/open",
+            "repoName": "open",
+            "issueNumber": OPEN_ISSUE_NUMBER,
+        }
+        note_blocks = [
+            {
+                "id": "context",
+                "label": "Contexto",
+                "items": [
+                    {"id": "saved", "kind": "text", "text": "Keep my local notes"},
+                ],
+            },
+        ]
+        saved = self.client.put(
+            "/api/issues/notes",
+            json={**reference, "noteBlocks": note_blocks},
+        )
+        if saved.status_code != HTTP_OK:
+            raise AssertionError(saved.text)
+
+        responses = (
+            self.client.post(
+                "/api/issues/sync-state",
+                json={
+                    "states": [
+                        {**reference, "state": {"priority": 2, "status": "active"}},
+                    ],
+                },
+            ),
+            self.client.post(
+                "/api/issues/state",
+                json={**reference, "state": {"status": "in_review"}},
+            ),
+            self.client.put(
+                "/api/issues/completion",
+                json={
+                    **reference,
+                    "isCompleted": True,
+                    "state": {"localCompletedAt": _relative_timestamp(0)},
+                },
+            ),
+        )
+        for response in responses:
+            if response.status_code != HTTP_OK:
+                raise AssertionError(response.text)
+        detail = self.client.get(
+            f"/api/issues/{quote(issue_key, safe='')}",
+        ).json()
+        if detail["localState"]["noteBlocks"][0]["items"][0]["text"] != (
+            "Keep my local notes"
+        ):
+            raise AssertionError(detail)
+        if detail["localState"]["status"] != "completed":
+            raise AssertionError(detail)
 
     def test_snapshot_can_return_all_closed_issues(self) -> None:
         """Return every assigned issue when the closed filter is set to all."""

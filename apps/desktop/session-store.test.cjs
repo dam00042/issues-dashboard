@@ -10,7 +10,7 @@ const {
   decryptSessionToken,
   readSessionRecord,
   writeSessionRecord,
-} = require("./dist/session-store.js");
+} = require("./session-store.ts");
 
 function encryptString(value) {
   return Buffer.from(value.split("").reverse().join(""), "utf8");

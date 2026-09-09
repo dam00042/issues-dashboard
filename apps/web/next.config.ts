@@ -7,6 +7,7 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isProductionBuild = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   assetPrefix: isProductionBuild ? "./" : undefined,
   images: {
     unoptimized: true,

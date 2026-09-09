@@ -3,6 +3,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const electronBinaryPath = require("electron");
+const { version } = require("../package.json");
 
 const desktopDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(desktopDirectory, "..", "..");
@@ -113,6 +114,8 @@ async function setWindowsExecutableIcon(executablePath) {
     try {
       await rcedit(executablePath, {
         icon: iconPath,
+        "file-version": version,
+        "product-version": version,
       });
       return;
     } catch (error) {
@@ -218,7 +221,7 @@ function writeStagePackageManifest() {
     main: "main.js",
     name: "github-issues-dashboard-desktop",
     productName: "GitHub Issues Dashboard",
-    version: "0.1.0",
+    version,
   };
 
   fs.writeFileSync(

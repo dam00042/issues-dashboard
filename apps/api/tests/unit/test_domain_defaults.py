@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest import TestCase
 
-from dashboard_api.domain.issues.defaults import default_note_blocks
-from dashboard_api.shared.time import subtract_months
+from dashboard_api.issues.defaults import default_note_blocks
+from dashboard_api.time_utils import subtract_months
 
 DEFAULT_BLOCK_COUNT = 2
 EXPECTED_FEBRUARY_MONTH = 2

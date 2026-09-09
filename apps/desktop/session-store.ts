@@ -1,7 +1,5 @@
-const fs = require("node:fs");
-const path = require("node:path");
-
-export {};
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const SESSION_FILE_VERSION = 2;
 
@@ -57,11 +55,11 @@ function clearSessionRecord(filePath) {
   fs.rmSync(`${filePath}.tmp`, { force: true });
 }
 
-module.exports = {
-  SESSION_FILE_VERSION,
+export {
   clearSessionRecord,
   createEncryptedSessionRecord,
   decryptSessionToken,
   readSessionRecord,
+  SESSION_FILE_VERSION,
   writeSessionRecord,
 };

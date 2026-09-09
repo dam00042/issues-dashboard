@@ -1,72 +1,55 @@
-const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { runSupervised } = require("../../../scripts/run-supervised.cjs");
 
 const apiDirectory = path.resolve(__dirname, "..");
-const sourceDirectory = path.join(apiDirectory, "src");
 
-function resolveBootstrapPythonExecutable() {
-  const configuredExecutable = process.env.DASHBOARD_BOOTSTRAP_PYTHON?.trim();
-  if (configuredExecutable) {
-    return configuredExecutable;
-  }
-
-  return process.platform === "win32" ? "python.exe" : "python3";
+function getUvLaunch(args, options = {}) {
+  return {
+    command:
+      process.env.DASHBOARD_BOOTSTRAP_PYTHON?.trim() ||
+      (process.platform === "win32" ? "python.exe" : "python3"),
+    args: ["-m", "uv", ...args],
+    options: {
+      cwd: apiDirectory,
+      stdio: "inherit",
+      windowsHide: true,
+      ...options,
+      env: {
+        ...process.env,
+        ...options.env,
+        // There is one project environment, even when another venv is active.
+        UV_PROJECT_ENVIRONMENT: path.join(apiDirectory, ".venv"),
+      },
+    },
+  };
 }
 
-function resolvePythonExecutable() {
-  const configuredExecutable = process.env.DASHBOARD_PYTHON?.trim();
-  if (configuredExecutable) {
-    return configuredExecutable;
-  }
-
-  const virtualEnvironmentExecutable =
-    process.platform === "win32"
-      ? path.join(apiDirectory, ".venv", "Scripts", "python.exe")
-      : path.join(apiDirectory, ".venv", "bin", "python");
-  if (fs.existsSync(virtualEnvironmentExecutable)) {
-    return virtualEnvironmentExecutable;
-  }
-
-  return process.platform === "win32" ? "python.exe" : "python3";
+function getPythonLaunch(args, options = {}) {
+  return getUvLaunch(
+    ["run", "--project", apiDirectory, "--frozen", "python", ...args],
+    options,
+  );
 }
 
-function runExecutable(executable, args, options = {}) {
-  const result = spawnSync(executable, args, {
-    cwd: apiDirectory,
-    stdio: "inherit",
-    ...options,
-  });
+function runPython(args, options = {}) {
+  const launch = getPythonLaunch(args, options);
+  const result = spawnSync(launch.command, launch.args, launch.options);
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`Python command failed with exit code ${String(result.status)}.`);
+    throw new Error(
+      `Python command failed with exit code ${String(result.status)}.`,
+    );
   }
 }
 
-function runBootstrapPython(args, options = {}) {
-  runExecutable(resolveBootstrapPythonExecutable(), args, options);
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const launch =
+    args[0] === "--uv" ? getUvLaunch(args.slice(1)) : getPythonLaunch(args);
+  runSupervised(launch.command, launch.args, launch.options);
 }
 
-function runPython(args, options = {}) {
-  const inheritedEnvironment = {
-    ...process.env,
-    ...(options.env ?? {}),
-  };
-  const existingPythonPath = inheritedEnvironment.PYTHONPATH?.trim();
-  inheritedEnvironment.PYTHONPATH = existingPythonPath
-    ? `${sourceDirectory}${path.delimiter}${existingPythonPath}`
-    : sourceDirectory;
-  runExecutable(resolvePythonExecutable(), args, {
-    ...options,
-    env: inheritedEnvironment,
-  });
-}
-
-module.exports = {
-  resolveBootstrapPythonExecutable,
-  resolvePythonExecutable,
-  runBootstrapPython,
-  runPython,
-};
+module.exports = { getPythonLaunch, getUvLaunch, runPython };

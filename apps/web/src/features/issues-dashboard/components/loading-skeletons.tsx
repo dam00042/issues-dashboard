@@ -1,24 +1,6 @@
 "use client";
 
 import { Skeleton } from "@heroui/react";
-import { memo, type PropsWithChildren } from "react";
-
-export const PersistentDashboardSection = memo(
-  function PersistentDashboardSection({
-    active,
-    children,
-  }: PropsWithChildren<{ active: boolean }>) {
-    return (
-      <div
-        aria-hidden={!active}
-        className={active ? "h-full min-h-0" : "hidden"}
-      >
-        {children}
-      </div>
-    );
-  },
-  (previous, next) => !next.active && previous.active === next.active,
-);
 
 function CardSkeleton() {
   return (

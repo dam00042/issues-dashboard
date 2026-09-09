@@ -1,9 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const {
-  runBootstrapPython,
-  runPython,
-} = require("./python-runtime.cjs");
+const { runPython } = require("./python-runtime.cjs");
 
 const apiDirectory = path.resolve(__dirname, "..");
 const distDirectory = path.join(apiDirectory, "dist-electron");
@@ -22,43 +19,28 @@ function removePath(targetPath) {
 
 function runPyInstaller() {
   runPython([
-      "-m",
-      "PyInstaller",
-      "--clean",
-      "--noconfirm",
-      "--onedir",
-      "--name",
-      "dashboard-api",
-      "--hidden-import",
-      "_cffi_backend",
-      "--collect-submodules",
-      "nacl",
-      "--collect-binaries",
-      "nacl",
-      "--collect-data",
-      "nacl",
-      "--collect-data",
-      "cffi",
-      "--distpath",
-      "dist-electron",
-      "--workpath",
-      workDirectory,
-      "src/dashboard_api/__main__.py",
-    ]);
-}
-
-function synchronizeBuildEnvironment() {
-  runBootstrapPython([
     "-m",
-    "uv",
-    "sync",
-    "--project",
-    ".",
-    "--frozen",
-    "--group",
-    "dev",
-    "--inexact",
-    "--no-install-project",
+    "PyInstaller",
+    "--clean",
+    "--noconfirm",
+    "--onedir",
+    "--name",
+    "dashboard-api",
+    "--hidden-import",
+    "_cffi_backend",
+    "--collect-submodules",
+    "nacl",
+    "--collect-binaries",
+    "nacl",
+    "--collect-data",
+    "nacl",
+    "--collect-data",
+    "cffi",
+    "--distpath",
+    "dist-electron",
+    "--workpath",
+    workDirectory,
+    "src/dashboard_api/__main__.py",
   ]);
 }
 
@@ -68,7 +50,6 @@ function main() {
   fs.mkdirSync(buildRootDirectory, { recursive: true });
 
   try {
-    synchronizeBuildEnvironment();
     runPyInstaller();
   } finally {
     removePath(workDirectory);
@@ -77,4 +58,3 @@ function main() {
 }
 
 main();
-

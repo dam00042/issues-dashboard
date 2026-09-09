@@ -1,6 +1,6 @@
 "use client";
 
-import { DragOverlay, useDndContext, useDraggable } from "@dnd-kit/core";
+import { DragOverlay, useDndMonitor, useDraggable } from "@dnd-kit/core";
 import { Button, Tooltip } from "@heroui/react";
 import {
   CheckCheck,
@@ -273,18 +273,23 @@ const IssueDragPreview = memo(function IssueDragPreview({
 });
 
 export function IssueDragOverlay() {
-  const { active, activeNodeRect } = useDndContext();
-  const draggedIssue = active?.data.current?.issue as
-    | DashboardIssue
-    | undefined;
+  const [draggedIssue, setDraggedIssue] = useState<DashboardIssue | null>(null);
+
+  useDndMonitor({
+    onDragStart({ active }) {
+      setDraggedIssue((active.data.current?.issue as DashboardIssue) ?? null);
+    },
+    onDragCancel() {
+      setDraggedIssue(null);
+    },
+    onDragEnd() {
+      setDraggedIssue(null);
+    },
+  });
 
   return (
     <DragOverlay dropAnimation={null} style={DRAG_OVERLAY_STYLE}>
-      {draggedIssue ? (
-        <div style={{ width: activeNodeRect?.width ?? "100%" }}>
-          <IssueDragPreview issue={draggedIssue} />
-        </div>
-      ) : null}
+      {draggedIssue ? <IssueDragPreview issue={draggedIssue} /> : null}
     </DragOverlay>
   );
 }

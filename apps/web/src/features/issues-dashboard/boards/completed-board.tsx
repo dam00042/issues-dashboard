@@ -1,9 +1,9 @@
 "use client";
 
-import { useDroppable } from "@dnd-kit/core";
 import { CheckCheck, ExternalLink, Eye, RotateCcw } from "lucide-react";
 import { type CSSProperties, memo, useEffect, useRef, useState } from "react";
 
+import { useIssueDropTarget } from "@/features/issues-dashboard/boards/issue-drop-target";
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
@@ -62,14 +62,14 @@ function DroppableBucket({
   icon: React.ElementType;
   title: string;
 }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `bucket-${bucketId}`,
-    data: { type: "Bucket", priority: bucketId },
-  });
+  const { isOver, setRegionRef, setContentRef } = useIssueDropTarget(
+    `bucket-${bucketId}`,
+    bucketId,
+  );
 
   return (
     <section
-      ref={setNodeRef}
+      ref={setRegionRef}
       aria-label={title}
       className={`flex h-full min-h-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 transition-colors ${
         isOver
@@ -91,7 +91,9 @@ function DroppableBucket({
       </div>
 
       <div className="app-scrollbar min-h-0 flex-1 overflow-auto p-2.5">
-        <div className="space-y-2 pb-2">{children}</div>
+        <div ref={setContentRef} className="space-y-2 pb-2">
+          {children}
+        </div>
       </div>
     </section>
   );

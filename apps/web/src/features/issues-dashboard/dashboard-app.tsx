@@ -5,7 +5,6 @@ import {
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -20,18 +19,19 @@ import {
   useState,
 } from "react";
 import { synchronizeDashboard } from "@/features/issues-dashboard/api";
-import { ActiveBoard } from "@/features/issues-dashboard/boards/active-board";
+import {
+  ActiveBoard,
+  type BoardColumnWidths,
+} from "@/features/issues-dashboard/boards/active-board";
 import { CompletedBoard } from "@/features/issues-dashboard/boards/completed-board";
+import { detectIssueDrop } from "@/features/issues-dashboard/boards/issue-drop-target";
 import { PullRequestsBoard } from "@/features/issues-dashboard/boards/pull-requests-board";
 import { DashboardFilterBar } from "@/features/issues-dashboard/components/dashboard-filter-bar";
 import { DashboardHeader } from "@/features/issues-dashboard/components/dashboard-header";
 import { DashboardSettingsModal } from "@/features/issues-dashboard/components/dashboard-settings-modal";
 import { DesktopTitleBar } from "@/features/issues-dashboard/components/desktop-title-bar";
 import { IssueDragOverlay } from "@/features/issues-dashboard/components/issue-card";
-import {
-  DashboardSectionSkeleton,
-  PersistentDashboardSection,
-} from "@/features/issues-dashboard/components/loading-skeletons";
+import { DashboardSectionSkeleton } from "@/features/issues-dashboard/components/loading-skeletons";
 import { SessionScreen } from "@/features/issues-dashboard/components/session-screen";
 import { useDashboardPreferences } from "@/features/issues-dashboard/hooks/use-dashboard-preferences";
 import { useDesktopWindow } from "@/features/issues-dashboard/hooks/use-desktop-window";
@@ -43,6 +43,7 @@ import type {
   DashboardPreferences,
   DashboardSection,
   PriorityValue,
+  PullRequestStateFilter,
   PullRequestWindowOption,
   RemoteIssueStateFilter,
   SelectedProjectFields,
@@ -147,9 +148,18 @@ export function DashboardApp() {
     useState<SelectedProjectFields>({});
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [mountedSections, setMountedSections] = useState<
-    ReadonlySet<DashboardSection>
-  >(() => new Set(["board"]));
+  const renderedSection = useDeferredValue(section);
+  const [authoredPullRequestFilter, setAuthoredPullRequestFilter] =
+    useState<PullRequestStateFilter>("open");
+  const [requestedPullRequestFilter, setRequestedPullRequestFilter] =
+    useState<PullRequestStateFilter>("open");
+  const [boardColumnWidths, setBoardColumnWidths] = useState<BoardColumnWidths>(
+    {
+      twoColumnLeft: 24,
+      threeColumnLeft: 20,
+    },
+  );
+  const isSynchronizingRef = useRef(false);
   const issuePrefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const shownDashboardNoticesRef = useRef({
     project: "",
@@ -243,6 +253,12 @@ export function DashboardApp() {
     () => handleSidebarCollapse(false),
     [handleSidebarCollapse],
   );
+  const handleColumnWidthChange = useCallback(
+    (column: keyof BoardColumnWidths, width: number) => {
+      setBoardColumnWidths((current) => ({ ...current, [column]: width }));
+    },
+    [],
+  );
 
   const {
     hasLoadedPullRequests,
@@ -260,19 +276,6 @@ export function DashboardApp() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
   );
-
-  useEffect(() => {
-    if (mountedSections.has(section)) return;
-    const animationFrame = window.requestAnimationFrame(() => {
-      setMountedSections((currentSections) => {
-        if (currentSections.has(section)) return currentSections;
-        const nextSections = new Set(currentSections);
-        nextSections.add(section);
-        return nextSections;
-      });
-    });
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [mountedSections, section]);
 
   useEffect(
     () => () => {
@@ -307,7 +310,8 @@ export function DashboardApp() {
   }, [preferences, preferencesReady, setTheme]);
 
   const refreshDashboard = useCallback(async () => {
-    if (isSynchronizing) return;
+    if (isSynchronizingRef.current) return;
+    isSynchronizingRef.current = true;
     setIsSynchronizing(true);
     try {
       await flushDirtyIssueStates();
@@ -330,13 +334,13 @@ export function DashboardApp() {
           error instanceof Error ? error.message : "Inténtalo de nuevo.",
       });
     } finally {
+      isSynchronizingRef.current = false;
       setIsSynchronizing(false);
     }
   }, [
     closedWindow,
     fetchSnapshotData,
     flushDirtyIssueStates,
-    isSynchronizing,
     pullRequestWindow,
     refreshPullRequests,
   ]);
@@ -420,6 +424,7 @@ export function DashboardApp() {
     }, [filteredIssues]);
 
   const handleSectionChange = useCallback((nextSection: DashboardSection) => {
+    clearIssueDragActive();
     setSection(nextSection);
     setSelectedIssueKey(null);
   }, []);
@@ -435,6 +440,12 @@ export function DashboardApp() {
       return null;
     return issue;
   }, [issues, selectedIssueKey, section]);
+
+  useEffect(() => {
+    if (activeIssue && !activeIssue.detailsLoaded) {
+      void loadIssueDetail(activeIssue.issueKey);
+    }
+  }, [activeIssue, loadIssueDetail]);
 
   const handleIssueSelect = useCallback(
     (issueKey: string) => {
@@ -552,6 +563,7 @@ export function DashboardApp() {
     if (!exportBackup) return;
 
     try {
+      await flushDirtyIssueStates();
       const result = await exportBackup();
       if (result.cancelled) return;
 
@@ -568,18 +580,19 @@ export function DashboardApp() {
             : "Inténtalo de nuevo dentro de unos segundos.",
       });
     }
-  }, []);
+  }, [flushDirtyIssueStates]);
 
   const handleImportBackup = useCallback(async () => {
     const importBackup = window.githubIssuesDesktop?.importBackup;
     if (!importBackup) return;
 
     try {
+      await flushDirtyIssueStates();
       const result = await importBackup();
       if (result.cancelled) return;
 
       await Promise.all([
-        fetchSnapshotData(closedWindow),
+        fetchSnapshotData(closedWindow, { replaceLocalState: true }),
         refreshPullRequests(),
         reloadPreferences(),
       ]);
@@ -596,7 +609,13 @@ export function DashboardApp() {
             : "Comprueba el archivo e inténtalo de nuevo.",
       });
     }
-  }, [closedWindow, fetchSnapshotData, refreshPullRequests, reloadPreferences]);
+  }, [
+    closedWindow,
+    fetchSnapshotData,
+    flushDirtyIssueStates,
+    refreshPullRequests,
+    reloadPreferences,
+  ]);
 
   const cycleTheme = useCallback(() => {
     const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
@@ -703,26 +722,31 @@ export function DashboardApp() {
           ) : null}
 
           <div className="min-h-0 flex-1">
-            {!mountedSections.has(section) ||
+            {renderedSection !== section ||
             (section !== "pull_requests" && snapshot === null) ||
             (section === "pull_requests" && !hasLoadedPullRequests) ? (
               <DashboardSectionSkeleton />
-            ) : null}
-
-            {mountedSections.has("board") ? (
-              <PersistentDashboardSection
-                active={section === "board" && snapshot !== null}
+            ) : renderedSection === "pull_requests" ? (
+              <PullRequestsBoard
+                authoredFilter={authoredPullRequestFilter}
+                pullRequests={pullRequests}
+                requestedFilter={requestedPullRequestFilter}
+                onAuthoredFilterChange={setAuthoredPullRequestFilter}
+                onRequestedFilterChange={setRequestedPullRequestFilter}
+              />
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={detectIssueDrop}
+                onDragStart={markIssueDragActive}
+                onDragCancel={clearIssueDragActive}
+                onDragEnd={handleDndDragEnd}
               >
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={pointerWithin}
-                  onDragStart={markIssueDragActive}
-                  onDragCancel={clearIssueDragActive}
-                  onDragEnd={handleDndDragEnd}
-                >
+                {renderedSection === "board" ? (
                   <ActiveBoard
                     activeIssue={activeIssue}
                     backlogIssues={backlogIssues}
+                    columnWidths={boardColumnWidths}
                     isSidebarCollapsed={isSidebarCollapsed}
                     linkedPullRequestsCollapsed={
                       preferences.linkedPullRequestsCollapsed
@@ -731,6 +755,7 @@ export function DashboardApp() {
                     selectedIssueKey={selectedIssueKey}
                     sidebarWidth={preferences.sidebar.width}
                     onCollapseSidebar={collapseSidebar}
+                    onColumnWidthChange={handleColumnWidthChange}
                     onExpandSidebar={expandSidebar}
                     onCompleteIssue={completeIssue}
                     onReviewIssue={reviewIssue}
@@ -741,22 +766,7 @@ export function DashboardApp() {
                     onTogglePin={togglePin}
                     onUpdateBlocks={updateNoteBlocks}
                   />
-                  <IssueDragOverlay />
-                </DndContext>
-              </PersistentDashboardSection>
-            ) : null}
-
-            {mountedSections.has("completed") ? (
-              <PersistentDashboardSection
-                active={section === "completed" && snapshot !== null}
-              >
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={pointerWithin}
-                  onDragStart={markIssueDragActive}
-                  onDragCancel={clearIssueDragActive}
-                  onDragEnd={handleDndDragEnd}
-                >
+                ) : (
                   <CompletedBoard
                     activeIssue={activeIssue}
                     completedIssues={completedIssues}
@@ -778,18 +788,10 @@ export function DashboardApp() {
                     onCompleteIssue={completeIssue}
                     onUpdateBlocks={updateNoteBlocks}
                   />
-                  <IssueDragOverlay />
-                </DndContext>
-              </PersistentDashboardSection>
-            ) : null}
-
-            {mountedSections.has("pull_requests") ? (
-              <PersistentDashboardSection
-                active={section === "pull_requests" && hasLoadedPullRequests}
-              >
-                <PullRequestsBoard pullRequests={pullRequests} />
-              </PersistentDashboardSection>
-            ) : null}
+                )}
+                <IssueDragOverlay />
+              </DndContext>
+            )}
           </div>
         </div>
       </main>

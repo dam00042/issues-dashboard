@@ -1,7 +1,7 @@
 {
   "name": "issues-dashboard",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "apps/*"
@@ -12,13 +12,13 @@
     "dev:desktop": "node scripts/run-turbo-dev.cjs desktop",
     "dev:desktop:stream": "node scripts/run-turbo-dev.cjs desktop --ui=stream",
     "build": "npm run build --workspace @dashboard/desktop",
-    "build:desktop": "npm run build",
-    "lint": "npm run lint --workspace @dashboard/api && npm run lint --workspace @dashboard/web && npm run lint --workspace @dashboard/desktop",
-    "format": "npm run format --workspace @dashboard/api && npm run format --workspace @dashboard/web && npm run format --workspace @dashboard/desktop",
-    "format:check": "npm run format:check --workspace @dashboard/api && npm run format:check --workspace @dashboard/web && npm run format:check --workspace @dashboard/desktop",
-    "test": "npm run test --workspace @dashboard/api && npm run test --workspace @dashboard/web && npm run test --workspace @dashboard/desktop",
-    "verify": "npm run format:check && npm run lint && npm run test && npm run build",
-    "backend:venv": "npm run venv --workspace @dashboard/api",
+    "lint": "biome check scripts apps/api/scripts package.json apps/api/package.json turbo.json && npm run lint --workspace @dashboard/api && npm run lint --workspace @dashboard/web && npm run lint --workspace @dashboard/desktop",
+    "format": "biome format --write scripts apps/api/scripts package.json apps/api/package.json turbo.json && npm run format --workspace @dashboard/api && npm run format --workspace @dashboard/web && npm run format --workspace @dashboard/desktop",
+    "format:check": "biome check scripts apps/api/scripts package.json apps/api/package.json turbo.json --linter-enabled=false --assist-enabled=false && npm run format:check --workspace @dashboard/api && npm run format:check --workspace @dashboard/web && npm run format:check --workspace @dashboard/desktop",
+    "test": "npm run test:scripts && npm run test --workspace @dashboard/api && npm run test --workspace @dashboard/web && npm run test --workspace @dashboard/desktop",
+    "test:scripts": "node --test scripts/*.test.cjs",
+    "typecheck": "tsc --noEmit --project apps/web/tsconfig.json && tsc --noEmit --project apps/desktop/tsconfig.json",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "backend:sync": "npm run sync --workspace @dashboard/api",
     "backend:dev": "npm run dev --workspace @dashboard/api",
     "backend:test": "npm run test --workspace @dashboard/api",
@@ -30,4 +30,3 @@
     "turbo": "2.10.12"
   }
 }
-

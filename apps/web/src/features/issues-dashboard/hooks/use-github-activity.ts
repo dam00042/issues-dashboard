@@ -51,10 +51,6 @@ export function useGitHubActivity({
     }
   }, [pullRequestWindow]);
 
-  const refreshPullRequests = useCallback(
-    () => requestPullRequests(),
-    [requestPullRequests],
-  );
   const visiblePullRequests = useMemo(
     () => filterPullRequestsByWindow(pullRequests, pullRequestWindow),
     [pullRequests, pullRequestWindow],
@@ -78,6 +74,6 @@ export function useGitHubActivity({
     pullRequestWarning,
     pullRequests: visiblePullRequests,
     pullRequestsRefreshedAt,
-    refreshPullRequests,
+    refreshPullRequests: requestPullRequests,
   };
 }

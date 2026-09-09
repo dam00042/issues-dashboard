@@ -4,7 +4,7 @@ const test = require("node:test");
 const {
   BackendContractError,
   assertCompatibleBackendHealth,
-} = require("./dist/backend-health.js");
+} = require("./backend-health.ts");
 
 test("accepts the bundled API contract", () => {
   const health = assertCompatibleBackendHealth({

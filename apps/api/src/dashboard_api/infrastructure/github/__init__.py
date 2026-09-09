@@ -1,1 +1,0 @@
-"""Expose GitHub infrastructure adapters."""

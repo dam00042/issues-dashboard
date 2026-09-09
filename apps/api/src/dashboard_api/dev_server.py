@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import uvicorn
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8010
+DEFAULT_PORT = 17632
 
 
 def parse_reload_flag() -> bool:
@@ -22,10 +23,11 @@ def main() -> None:
     configured_host = os.getenv("DASHBOARD_API_HOST", DEFAULT_HOST)
 
     uvicorn.run(
-        "dashboard_api.app.main:app",
+        "dashboard_api.app:app",
         host=configured_host,
         port=int(configured_port),
         reload=parse_reload_flag(),
+        reload_dirs=[str(Path(__file__).parent)],
     )
 
 

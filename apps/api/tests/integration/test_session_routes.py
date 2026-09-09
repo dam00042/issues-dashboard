@@ -9,16 +9,16 @@ from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
-from dashboard_api.app.main import create_app
-from dashboard_api.application.issues.service import (
+from dashboard_api.app import create_app
+from dashboard_api.github.identity import GitHubIdentity
+from dashboard_api.issues.service import (
     AssignedIssuesFetchResult,
     GitHubAuthenticationError,
 )
-from dashboard_api.infrastructure.github.identity import GitHubIdentity
 from dashboard_api.settings import AppSettings
 
 if TYPE_CHECKING:
-    from dashboard_api.domain.issues.models import ClosedIssueWindow
+    from dashboard_api.issues.models import ClosedIssueWindow
 
 HTTP_OK = 200
 HTTP_UNAUTHORIZED = 401

@@ -50,18 +50,17 @@ El token también necesita acceso a los repositorios cuyas issues y Pull Request
 
 Requisitos:
 
-- Node.js 22+
+- Node.js 22.12+
 - npm 10+
 - Python 3.13+
 - `uv` disponible como módulo de Python (`python -m pip install uv`)
 
 ```powershell
 npm install
-npm run backend:venv
 npm run backend:sync
 ```
 
-Una vez creado el entorno, los scripts detectan automáticamente `apps/api/.venv/Scripts/python.exe`. Los comandos funcionan igual desde PowerShell, CMD y la terminal integrada de VS Code.
+Los scripts ejecutan Python mediante `uv run --frozen`, usando `apps/api/uv.lock` y el único entorno `apps/api/.venv`. No es necesario activar el entorno. `backend:sync` crea el entorno si falta. Configura `DASHBOARD_BOOTSTRAP_PYTHON` únicamente si el intérprete que proporciona el módulo `uv` no está en el PATH.
 
 ## Modos de ejecución
 
@@ -72,7 +71,9 @@ npm run dev
 ```
 
 - Interfaz: `http://127.0.0.1:3000`
-- API: el lanzador usa `8010` si está libre o reserva dinámicamente otro puerto local.
+- API: `http://127.0.0.1:17632`
+
+El puerto de `apps/web/.env.local` (`NEXT_PUBLIC_API_BASE_URL`) tiene prioridad, seguido de `apps/api/.env.local` (`DASHBOARD_API_PORT`), la variable heredada `DASHBOARD_API_PORT` y el valor predeterminado anterior. El lanzador inyecta la misma dirección resuelta en ambos procesos. Un puerto ocupado produce un error explícito antes de arrancarlos: no se cambia de dirección silenciosamente ni se detiene otra instancia. Ctrl+C cierra los procesos hijos, con limpieza acotada del árbol de procesos en Windows.
 
 Desarrollo de escritorio con API gestionada por Electron:
 
@@ -83,7 +84,7 @@ npm run dev:desktop
 Paquete de producción:
 
 ```powershell
-npm run build:desktop
+npm run build
 ```
 
 Salida:
@@ -99,11 +100,12 @@ El empaquetado recompila siempre la web estática y la API PyInstaller en format
 ```powershell
 npm run format:check
 npm run lint
+npm run typecheck
 npm run test
 npm run verify
 ```
 
-`npm run verify` también genera el paquete de escritorio completo.
+`npm run verify` comprueba formato, lint, tipos y tests sin generar el paquete de escritorio. El empaquetado se realiza expresamente con `npm run build`.
 
 ## Configuración
 

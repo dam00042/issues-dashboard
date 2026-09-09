@@ -1,17 +1,14 @@
 {
   "name": "@dashboard/api",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "scripts": {
-    "venv": "python -m uv venv .venv",
-    "sync": "python -m uv sync --project .",
-    "dev": "node scripts/run-python.cjs -m dashboard_api.dev_server",
-    "build": "node scripts/run-python.cjs -m compileall src tests",
+    "sync": "node scripts/python-runtime.cjs --uv sync --project . --frozen",
+    "dev": "node scripts/python-runtime.cjs -m dashboard_api.dev_server",
     "build:exe": "node scripts/build-exe.cjs",
-    "lint": "node scripts/run-python.cjs -m ruff check . --output-format=full",
-    "format": "node scripts/run-python.cjs -m ruff format .",
-    "format:check": "node scripts/run-python.cjs -m ruff format . --check",
-    "test": "node scripts/run-python.cjs -m pytest"
+    "lint": "node scripts/python-runtime.cjs -m ruff check . --output-format=full",
+    "format": "node scripts/python-runtime.cjs -m ruff format .",
+    "format:check": "node scripts/python-runtime.cjs -m ruff format . --check",
+    "test": "node scripts/python-runtime.cjs -m pytest"
   }
 }
-

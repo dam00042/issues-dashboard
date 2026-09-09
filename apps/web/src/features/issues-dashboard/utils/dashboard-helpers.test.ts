@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PROJECT_STATUS_DEFINITIONS } from "@/features/issues-dashboard/project-statuses";
 import type {
   DashboardIssue,
@@ -15,6 +15,11 @@ import {
   normalizeNoteBlocks,
   sortIssuesByPinnedAndUpdated,
 } from "./dashboard-helpers";
+import {
+  flushMissingIssueStates,
+  getStableIssueKeys,
+  reconcileIssue,
+} from "./issue-state";
 
 function createLocalState(
   overrides: Partial<IssueLocalState> = {},
@@ -27,6 +32,7 @@ function createLocalState(
     localCompletedAt: null,
     noteBlocks: defaultNoteBlocks(),
     priority: null,
+    status: "active",
     ...overrides,
   };
 }
@@ -64,6 +70,204 @@ function createIssue(
 }
 
 describe("issue helpers", () => {
+  it("keeps loaded detail when an unchanged compact snapshot arrives", () => {
+    const current = createIssue("example/repo#1", {
+      body: "Cached detail",
+      detailsLoaded: true,
+    });
+    current.localState.noteBlocks[0].items[0].text = "Keep this note";
+    const compact = createIssue(current.issueKey);
+
+    const result = reconcileIssue(compact, current);
+
+    expect(result.detailsLoaded).toBe(true);
+    expect(result.body).toBe("Cached detail");
+    expect(result.localState.noteBlocks).toBe(current.localState.noteBlocks);
+  });
+
+  it("keeps a confirmed local edit when an older read finishes later", () => {
+    const current = createIssue("example/repo#1", {
+      localState: createLocalState({
+        status: "in_review",
+        priority: 2,
+        lastInteractedAt: "2026-04-01T12:01:00.000Z",
+      }),
+    });
+
+    const result = reconcileIssue(createIssue(current.issueKey), current);
+
+    expect(result.localState.status).toBe("in_review");
+    expect(result.localState.priority).toBe(2);
+  });
+
+  it("loads persisted notes into a compact issue with a pending priority edit", () => {
+    const current = createIssue("example/repo#1", {
+      localState: createLocalState({ priority: 2 }),
+    });
+    const detail = createIssue(current.issueKey, { detailsLoaded: true });
+    detail.localState.noteBlocks[0].items[0].text = "Saved note";
+
+    const result = reconcileIssue(detail, current, { dirty: true });
+
+    expect(result.localState.priority).toBe(2);
+    expect(result.localState.noteBlocks[0].items[0].text).toBe("Saved note");
+  });
+
+  it("invalidates remote detail while retaining unsaved notes", () => {
+    const current = createIssue("example/repo#1", { detailsLoaded: true });
+    current.localState.noteBlocks[0].items[0].text = "Pending note";
+    const incoming = createIssue(current.issueKey, {
+      syncedAt: "2026-04-01T13:00:00.000Z",
+    });
+
+    const result = reconcileIssue(incoming, current, {
+      dirty: true,
+      dirtyNotes: true,
+    });
+
+    expect(result.detailsLoaded).toBe(false);
+    expect(result.localState.noteBlocks).toBe(current.localState.noteBlocks);
+  });
+
+  it("keeps confirmed notes when an older detail arrives after invalidation", () => {
+    const current = createIssue("example/repo#1", {
+      detailsLoaded: true,
+      localState: createLocalState({
+        lastInteractedAt: "2026-04-01T12:01:00.000Z",
+      }),
+    });
+    current.localState.noteBlocks[0].items[0].text = "Latest saved note";
+    const invalidated = reconcileIssue(
+      createIssue(current.issueKey, {
+        syncedAt: "2026-04-01T13:00:00.000Z",
+      }),
+      current,
+      { dirty: true, dirtyNotes: true },
+    );
+    expect(invalidated.detailsLoaded).toBe(false);
+
+    const staleDetail = createIssue(current.issueKey, { detailsLoaded: true });
+    staleDetail.localState.noteBlocks[0].items[0].text = "Previous note";
+    const result = reconcileIssue(staleDetail, invalidated);
+
+    expect(result.localState.noteBlocks).toBe(current.localState.noteBlocks);
+    expect(
+      buildSyncPayload([result], [result.issueKey])[0].state.noteBlocks,
+    ).toBe(current.localState.noteBlocks);
+  });
+
+  it("waits for a filtered-out issue to be saved before replacing its snapshot", async () => {
+    const issue = createIssue("example/repo#1", { detailsLoaded: true });
+    issue.localState.noteBlocks[0].items[0].text = "Pending note";
+    const pendingVersions = new Map([[issue.issueKey, 1]]);
+    let visibleIssues = [issue];
+    let completeWrite: () => void = () => {};
+    const writeFinished = new Promise<void>((resolve) => {
+      completeWrite = resolve;
+    });
+    const writes: ReturnType<typeof buildSyncPayload>[] = [];
+    const applyingSnapshot = flushMissingIssueStates(
+      [],
+      pendingVersions,
+      async () => {
+        writes.push(buildSyncPayload(visibleIssues, pendingVersions.keys()));
+        await writeFinished;
+        pendingVersions.clear();
+      },
+    ).then(() => {
+      visibleIssues = [];
+    });
+    await Promise.resolve();
+    expect(visibleIssues).toEqual([issue]);
+
+    completeWrite();
+    await applyingSnapshot;
+
+    expect(writes[0][0].state.noteBlocks?.[0].items[0].text).toBe(
+      "Pending note",
+    );
+    expect(pendingVersions.size).toBe(0);
+    expect(visibleIssues).toEqual([]);
+  });
+
+  it("keeps the old snapshot when a filtered-out edit cannot be saved", async () => {
+    const issue = createIssue("example/repo#1");
+    const pendingVersions = new Map([[issue.issueKey, 1]]);
+    let visibleIssues = [issue];
+    const applyingSnapshot = flushMissingIssueStates([], pendingVersions, () =>
+      Promise.reject(new Error("Local service unavailable")),
+    ).then(() => {
+      visibleIssues = [];
+    });
+
+    await expect(applyingSnapshot).rejects.toThrow("Local service unavailable");
+    expect(visibleIssues).toEqual([issue]);
+    expect(pendingVersions.has(issue.issueKey)).toBe(true);
+  });
+
+  it("does not delay a snapshot for edits that can be reconciled in place", async () => {
+    const issue = createIssue("example/repo#1");
+    const flush = vi.fn(async () => {});
+
+    await flushMissingIssueStates(
+      [issue],
+      new Map([[issue.issueKey, 1]]),
+      flush,
+    );
+
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it("does not acknowledge a second edit made while the first was saving", () => {
+    const submitted = new Map([
+      ["example/repo#1", 1],
+      ["example/repo#2", 2],
+    ]);
+    const current = new Map([
+      ["example/repo#1", 3],
+      ["example/repo#2", 2],
+    ]);
+
+    expect(getStableIssueKeys(submitted, current)).toEqual(["example/repo#2"]);
+  });
+
+  it("accepts an older restored state without reusing cached detail or notes", () => {
+    const current = createIssue("example/repo#1", {
+      body: "Current detail",
+      detailsLoaded: true,
+      localState: createLocalState({
+        lastInteractedAt: "2026-04-01T12:01:00.000Z",
+        priority: 4,
+        status: "in_review",
+      }),
+    });
+    current.localState.noteBlocks[0].items[0].text = "Current note";
+    const restored = createIssue(current.issueKey);
+
+    const result = reconcileIssue(restored, current, {
+      replaceLocalState: true,
+    });
+
+    expect(result).toMatchObject(restored);
+    expect(result.notesLoaded).toBe(false);
+  });
+
+  it("retains edits made while a restored snapshot is loading", () => {
+    const current = createIssue("example/repo#1", {
+      localState: createLocalState({ priority: 4 }),
+    });
+    current.localState.noteBlocks[0].items[0].text = "New note";
+
+    const result = reconcileIssue(createIssue(current.issueKey), current, {
+      dirty: true,
+      dirtyNotes: true,
+      replaceLocalState: true,
+    });
+
+    expect(result.localState.priority).toBe(4);
+    expect(result.localState.noteBlocks).toBe(current.localState.noteBlocks);
+  });
+
   it("keeps the complete canonical Project status workflow in a fixed order", () => {
     expect(
       PROJECT_STATUS_DEFINITIONS.map((definition) => definition.label),
@@ -193,6 +397,7 @@ describe("issue helpers", () => {
         localState: createLocalState({ priority: 4 }),
       }),
       createIssue("repo-22", {
+        detailsLoaded: true,
         githubId: 22,
         localState: dirtyState,
       }),
@@ -210,6 +415,25 @@ describe("issue helpers", () => {
         state: dirtyState,
       },
     ]);
+  });
+
+  it("preserves unloaded notes by omitting them from local state writes", () => {
+    const issue = createIssue("repo-22");
+    const [payload] = buildSyncPayload([issue], [issue.issueKey]);
+
+    expect(payload?.state).not.toHaveProperty("noteBlocks");
+    expect(payload?.state.status).toBe("active");
+  });
+
+  it("includes notes explicitly edited before detail loading completes", () => {
+    const issue = createIssue("repo-22");
+    const [payload] = buildSyncPayload(
+      [issue],
+      [issue.issueKey],
+      new Set([issue.issueKey]),
+    );
+
+    expect(payload?.state.noteBlocks).toEqual(issue.localState.noteBlocks);
   });
 
   it("builds dynamic GitHub Project filters and matches their values", () => {

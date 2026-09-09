@@ -14,7 +14,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 
 import type {
   GitHubPullRequest,
@@ -22,12 +22,7 @@ import type {
 } from "@/features/issues-dashboard/types";
 import { formatRelativeTimestamp } from "@/features/issues-dashboard/utils/dashboard-helpers";
 
-type SelectablePullRequestStateFilter = Exclude<
-  PullRequestStateFilter,
-  "custom"
->;
-
-const PULL_REQUEST_FILTERS: readonly SelectablePullRequestStateFilter[] = [
+const PULL_REQUEST_FILTERS: readonly PullRequestStateFilter[] = [
   "all",
   "open",
   "draft",
@@ -40,7 +35,6 @@ function getFilterLabel(filter: PullRequestStateFilter): string {
   if (filter === "draft") return "Draft";
   if (filter === "merged") return "Merged";
   if (filter === "closed") return "Cerradas";
-  if (filter === "custom") return "Estado personalizado";
   return "Todas · Estado";
 }
 
@@ -68,7 +62,7 @@ function PullRequestFilterIcon({ filter }: { filter: PullRequestStateFilter }) {
 
 function matchesPullRequestFilter(
   pullRequest: GitHubPullRequest,
-  filter: SelectablePullRequestStateFilter,
+  filter: PullRequestStateFilter,
 ): boolean {
   if (filter === "all") return true;
   if (filter === "draft") return pullRequest.isDraft;
@@ -85,7 +79,7 @@ function PullRequestFilter({
 }: {
   ariaLabel: string;
   value: PullRequestStateFilter;
-  onChange: (filter: SelectablePullRequestStateFilter) => void;
+  onChange: (filter: PullRequestStateFilter) => void;
 }) {
   return (
     <Dropdown>
@@ -271,11 +265,11 @@ function PullRequestQuadrant({
   onFilterChange,
 }: {
   emptyMessage: string;
-  filter: SelectablePullRequestStateFilter;
+  filter: PullRequestStateFilter;
   icon: typeof GitPullRequest;
   pullRequests: GitHubPullRequest[];
   title: string;
-  onFilterChange: (filter: SelectablePullRequestStateFilter) => void;
+  onFilterChange: (filter: PullRequestStateFilter) => void;
 }) {
   const filteredPullRequests = useMemo(
     () =>
@@ -331,14 +325,18 @@ function PullRequestQuadrant({
 }
 
 export const PullRequestsBoard = memo(function PullRequestsBoard({
+  authoredFilter,
   pullRequests,
+  requestedFilter,
+  onAuthoredFilterChange,
+  onRequestedFilterChange,
 }: {
+  authoredFilter: PullRequestStateFilter;
   pullRequests: GitHubPullRequest[];
+  requestedFilter: PullRequestStateFilter;
+  onAuthoredFilterChange: (filter: PullRequestStateFilter) => void;
+  onRequestedFilterChange: (filter: PullRequestStateFilter) => void;
 }) {
-  const [authoredFilter, setAuthoredFilter] =
-    useState<SelectablePullRequestStateFilter>("open");
-  const [requestedFilter, setRequestedFilter] =
-    useState<SelectablePullRequestStateFilter>("open");
   const { authored, requested } = useMemo(() => {
     const groups = {
       authored: [] as GitHubPullRequest[],
@@ -360,7 +358,7 @@ export const PullRequestsBoard = memo(function PullRequestsBoard({
         icon={GitPullRequest}
         pullRequests={authored}
         title="PRs solicitadas por mí"
-        onFilterChange={setAuthoredFilter}
+        onFilterChange={onAuthoredFilterChange}
       />
       <PullRequestQuadrant
         emptyMessage="No tienes revisiones solicitadas ni PRs revisadas recientemente."
@@ -368,7 +366,7 @@ export const PullRequestsBoard = memo(function PullRequestsBoard({
         icon={UserCheck}
         pullRequests={requested}
         title="PRs que me solicitan"
-        onFilterChange={setRequestedFilter}
+        onFilterChange={onRequestedFilterChange}
       />
     </div>
   );

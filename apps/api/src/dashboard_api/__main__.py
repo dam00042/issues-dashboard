@@ -6,7 +6,7 @@ import os
 
 import uvicorn
 
-from dashboard_api.app.main import app
+from dashboard_api.app import app
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8010

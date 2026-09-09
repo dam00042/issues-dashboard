@@ -1,9 +1,9 @@
 "use client";
 
-import { useDroppable } from "@dnd-kit/core";
 import { CheckCheck, ExternalLink, Eye, List, Pin } from "lucide-react";
 import { type CSSProperties, memo, useEffect, useRef, useState } from "react";
 
+import { useIssueDropTarget } from "@/features/issues-dashboard/boards/issue-drop-target";
 import { CopyButton } from "@/features/issues-dashboard/components/copy-button";
 import { IconActionButton } from "@/features/issues-dashboard/components/icon-action-button";
 import { DraggableIssueCard } from "@/features/issues-dashboard/components/issue-card";
@@ -26,15 +26,22 @@ interface PriorityBucket extends PriorityDefinition {
   issues: DashboardIssue[];
 }
 
+export interface BoardColumnWidths {
+  twoColumnLeft: number;
+  threeColumnLeft: number;
+}
+
 export interface ActiveBoardProps {
   activeIssue: DashboardIssue | null;
   backlogIssues: DashboardIssue[];
+  columnWidths: BoardColumnWidths;
   isSidebarCollapsed: boolean;
   linkedPullRequestsCollapsed: boolean;
   priorityBuckets: PriorityBucket[];
   selectedIssueKey: string | null;
   sidebarWidth: number;
   onCollapseSidebar: () => void;
+  onColumnWidthChange: (column: keyof BoardColumnWidths, width: number) => void;
   onExpandSidebar: () => void;
   onCompleteIssue: (issueKey: string) => void;
   onReviewIssue: (issueKey: string) => void;
@@ -82,23 +89,30 @@ function getQuadrantHeaderStyle(definition: PriorityDefinition): CSSProperties {
 
 function DroppableBacklog({
   children,
+  header,
   className,
 }: {
   children: React.ReactNode;
+  header: React.ReactNode;
   className?: string;
 }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: "bucket-null",
-    data: { type: "Bucket", priority: null },
-  });
+  const { isOver, setRegionRef, setContentRef } = useIssueDropTarget(
+    "bucket-null",
+    null,
+  );
 
   return (
     <section
-      ref={setNodeRef}
+      ref={setRegionRef}
       aria-label="Backlog de issues"
       className={`${className || ""} transition-colors ${isOver ? "bg-[rgb(var(--app-accent))]/5" : ""}`}
     >
-      {children}
+      {header}
+      <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-2 py-2">
+        <div ref={setContentRef} className="space-y-2 px-1 pb-2">
+          {children}
+        </div>
+      </div>
     </section>
   );
 }
@@ -110,16 +124,16 @@ function DroppablePriorityBucket({
   bucket: PriorityBucket;
   children: React.ReactNode;
 }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `bucket-${bucket.value}`,
-    data: { type: "Bucket", priority: bucket.value },
-  });
+  const { isOver, setRegionRef, setContentRef } = useIssueDropTarget(
+    `bucket-${bucket.value}`,
+    bucket.value,
+  );
 
   const BucketIcon = bucket.icon;
 
   return (
     <section
-      ref={setNodeRef}
+      ref={setRegionRef}
       aria-label={`Prioridad ${bucket.label}`}
       className={`flex min-h-[210px] min-w-0 flex-col overflow-hidden rounded-[1rem] border border-[rgb(var(--app-border))]/65 transition-colors ${
         isOver
@@ -142,7 +156,9 @@ function DroppablePriorityBucket({
       </div>
 
       <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-2 py-2">
-        <div className="space-y-2 px-1 pb-2">{children}</div>
+        <div ref={setContentRef} className="space-y-2 px-1 pb-2">
+          {children}
+        </div>
       </div>
     </section>
   );
@@ -151,12 +167,14 @@ function DroppablePriorityBucket({
 export const ActiveBoard = memo(function ActiveBoard({
   activeIssue,
   backlogIssues,
+  columnWidths: { twoColumnLeft, threeColumnLeft },
   isSidebarCollapsed,
   linkedPullRequestsCollapsed,
   priorityBuckets,
   selectedIssueKey,
   sidebarWidth,
   onCollapseSidebar,
+  onColumnWidthChange,
   onExpandSidebar,
   onCompleteIssue,
   onReviewIssue,
@@ -177,8 +195,6 @@ export const ActiveBoard = memo(function ActiveBoard({
     return window.matchMedia(`(min-width: ${String(WIDE_LAYOUT_BREAKPOINT)}px)`)
       .matches;
   });
-  const [twoColumnLeft, setTwoColumnLeft] = useState(24);
-  const [threeColumnLeft, setThreeColumnLeft] = useState(20);
   const [renderedSidebarWidth, setRenderedSidebarWidth] =
     useState(sidebarWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -215,7 +231,8 @@ export const ActiveBoard = memo(function ActiveBoard({
         ((event.clientX - dragState.startX) / workspaceWidth) * 100;
 
       if (dragState.mode === "two-col") {
-        setTwoColumnLeft(
+        onColumnWidthChange(
+          "twoColumnLeft",
           clamp(
             dragState.twoColumnLeft + deltaPercent,
             TWO_COLUMN_MIN_LEFT,
@@ -226,7 +243,8 @@ export const ActiveBoard = memo(function ActiveBoard({
 
       if (dragState.mode === "left-split") {
         const maxLeft = 100 - THREE_COLUMN_MIN_RIGHT - THREE_COLUMN_MIN_CENTER;
-        setThreeColumnLeft(
+        onColumnWidthChange(
+          "threeColumnLeft",
           clamp(
             dragState.threeColumnLeft + deltaPercent,
             THREE_COLUMN_MIN_LEFT,
@@ -284,7 +302,7 @@ export const ActiveBoard = memo(function ActiveBoard({
       window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("mouseout", handleMouseOut);
     };
-  }, [dragState, onSidebarWidthChange]);
+  }, [dragState, onColumnWidthChange, onSidebarWidthChange]);
 
   const hasSidebarIssue = Boolean(sidebarIssue);
   const isSidebarExpanded = hasSidebarIssue && !isSidebarCollapsed;
@@ -315,42 +333,41 @@ export const ActiveBoard = memo(function ActiveBoard({
       className={boardClassName}
       style={isWideLayout ? { gridTemplateColumns: wideLayoutColumns } : {}}
     >
-      <DroppableBacklog className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96">
-        <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2">
-              <List size={16} className="text-[rgb(var(--app-muted))]" />
-              <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
-                Backlog
-              </h2>
-            </div>
-            <span className="rounded-full bg-[rgb(var(--app-surface-strong))] px-2 py-0.5 text-[11px] font-bold text-[rgb(var(--app-muted))]">
-              {backlogIssues.length}
-            </span>
-          </div>
-        </div>
-
-        <div className="app-scrollbar min-h-0 flex-1 overflow-auto px-2 py-2">
-          <div className="space-y-2 px-1 pb-2">
-            {backlogIssues.length === 0 ? (
-              <div className="rounded-[1rem] border border-dashed border-[rgb(var(--app-border))]/70 px-4 py-8 text-center text-sm text-[rgb(var(--app-muted))]">
-                No hay issues en backlog para la búsqueda actual.
+      <DroppableBacklog
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.2rem] border border-[rgb(var(--app-border))]/70 bg-[rgb(var(--app-surface))]/96"
+        header={
+          <div className="border-b border-[rgb(var(--app-border))]/55 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="inline-flex items-center gap-2">
+                <List size={16} className="text-[rgb(var(--app-muted))]" />
+                <h2 className="text-sm font-semibold text-[rgb(var(--app-foreground))]">
+                  Backlog
+                </h2>
               </div>
-            ) : (
-              backlogIssues.map((issue) => (
-                <DraggableIssueCard
-                  key={issue.issueKey}
-                  isSelected={selectedIssueKey === issue.issueKey}
-                  issue={issue}
-                  onIssuePrefetch={onIssuePrefetch}
-                  onIssueSelect={onIssueSelect}
-                  onCompleteIssue={onCompleteIssue}
-                  onReviewIssue={onReviewIssue}
-                />
-              ))
-            )}
+              <span className="rounded-full bg-[rgb(var(--app-surface-strong))] px-2 py-0.5 text-[11px] font-bold text-[rgb(var(--app-muted))]">
+                {backlogIssues.length}
+              </span>
+            </div>
           </div>
-        </div>
+        }
+      >
+        {backlogIssues.length === 0 ? (
+          <div className="rounded-[1rem] border border-dashed border-[rgb(var(--app-border))]/70 px-4 py-8 text-center text-sm text-[rgb(var(--app-muted))]">
+            No hay issues en backlog para la búsqueda actual.
+          </div>
+        ) : (
+          backlogIssues.map((issue) => (
+            <DraggableIssueCard
+              key={issue.issueKey}
+              isSelected={selectedIssueKey === issue.issueKey}
+              issue={issue}
+              onIssuePrefetch={onIssuePrefetch}
+              onIssueSelect={onIssueSelect}
+              onCompleteIssue={onCompleteIssue}
+              onReviewIssue={onReviewIssue}
+            />
+          ))
+        )}
       </DroppableBacklog>
 
       {isWideLayout ? (

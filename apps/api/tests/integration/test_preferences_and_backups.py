@@ -12,15 +12,15 @@ from unittest import TestCase
 
 from fastapi.testclient import TestClient
 
-from dashboard_api.app.main import create_app
-from dashboard_api.application.issues.service import (
+from dashboard_api.app import create_app
+from dashboard_api.issues.service import (
     AssignedIssuesFetchResult,
     PullRequestFetchResult,
 )
 from dashboard_api.settings import AppSettings
 
 if TYPE_CHECKING:
-    from dashboard_api.domain.issues.models import ClosedIssueWindow, PullRequestWindow
+    from dashboard_api.issues.models import ClosedIssueWindow, PullRequestWindow
 
 HTTP_OK = 200
 HTTP_UNAUTHORIZED = 401
